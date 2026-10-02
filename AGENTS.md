@@ -75,3 +75,39 @@ should be flexible enough to add SSH keys in the future.
 
 
 
+
+Coding rules
+------------
+
+* Only ASCII characters are allowed anywhere in the code (source
+  files, comments, string literals, configuration and scripts).
+  Non-ASCII text (such as Ukrainian and German UI translations) lives
+  in separate locale data files, not in the code.
+
+* Code must stay runnable by Node's type stripping (and Bun/Deno):
+  no enums, namespaces or constructor parameter properties
+  (`erasableSyntaxOnly`), and relative imports use the `.ts` extension.
+
+* Run `npm test`, `npm run typecheck` and `npm run check-ascii` before
+  committing.
+
+Implementation map
+------------------
+
+* `src/git/` - backend-neutral Git interface (`types.ts`) and the
+  libgit2 implementation via nodegit (`nodegit.ts`). Alternative
+  libgit2 bindings (e.g. for Bun or Deno) plug in by implementing
+  `GitBackend`.
+* `src/db/` - transactional JSON store over the bare metadata
+  repository (`store.ts`) and record types with the repository layout
+  (`models.ts`).
+* `src/services/` - users and registration, repositories and content
+  editing, access tokens and one-time passwords, invitations,
+  pre-registrations, branding.
+* `src/http/` - Hono application: web UI routes, JSON API, Git smart
+  HTTP (delegates the pack protocol to `git upload-pack` /
+  `git receive-pack`, which libgit2 does not implement).
+* `src/views/` - HTML templates (escaping tagged templates in
+  `html.ts`).
+* `locales/` - UI translations (en, uk, de); every locale must have the
+  same keys as `en.json`.

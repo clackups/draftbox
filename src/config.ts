@@ -1,0 +1,119 @@
+// Backend configuration. Loaded from a JSON file (path in DRAFTBOX_CONFIG,
+// default ./draftbox.config.json); secrets may be overridden by environment
+// variables so that they do not need to be stored in the file.
+
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+export interface OAuthClientConfig {
+  clientId: string;
+  clientSecret: string;
+}
+
+export interface OidcProviderConfig extends OAuthClientConfig {
+  // Display name on the login page.
+  label: string;
+  // Issuer base URL; /.well-known/openid-configuration is fetched from it.
+  issuer: string;
+}
+
+export interface Config {
+  // Public URL of the service, without trailing slash. Used for OAuth
+  // redirect URIs and links shown to users.
+  baseUrl: string;
+  host: string;
+  port: number;
+  // Directory holding the metadata repository and user repositories.
+  dataDir: string;
+  // Secret used to sign session cookies and CSRF tokens.
+  sessionSecret: string;
+  // Secret used to encrypt token values pending one-time password exchange.
+  encryptionKey: string;
+  // Path to the git executable, used for the Git smart HTTP protocol.
+  gitBinary: string;
+
+  registration: {
+    // Anyone who authenticates via OAuth gets an account.
+    open: boolean;
+    // Invitation links created by administrators allow registration.
+    invitations: boolean;
+    // Email addresses registered through the admin API may register.
+    preregistration: boolean;
+  };
+
+  oauth: {
+    google?: OAuthClientConfig;
+    github?: OAuthClientConfig;
+    oidc?: Record<string, OidcProviderConfig>;
+    // Development-only provider that trusts any typed email address.
+    // Never enable in production.
+    dev?: { enabled: boolean };
+  };
+
+  admins: {
+    emails: string[];
+    // Only logins through these providers grant administrator rights.
+    trustedProviders: string[];
+  };
+
+  // Bearer keys accepted by the administrative API (/api/admin/...).
+  adminApiKeys: string[];
+
+  defaultLanguage: string;
+  sessionMaxAgeDays: number;
+  // Trust X-Forwarded-For for client addresses (set behind a reverse proxy).
+  trustProxy: boolean;
+}
+
+const DEFAULTS: Config = {
+  baseUrl: 'http://localhost:8080',
+  host: '127.0.0.1',
+  port: 8080,
+  dataDir: './data',
+  sessionSecret: '',
+  encryptionKey: '',
+  gitBinary: 'git',
+  registration: { open: false, invitations: true, preregistration: true },
+  oauth: {},
+  admins: { emails: [], trustedProviders: ['google', 'github'] },
+  adminApiKeys: [],
+  defaultLanguage: 'en',
+  sessionMaxAgeDays: 30,
+  trustProxy: false,
+};
+
+export function loadConfig(path?: string): Config {
+  const file = resolve(path ?? process.env.DRAFTBOX_CONFIG ?? 'draftbox.config.json');
+  let fromFile: Partial<Config> = {};
+  if (existsSync(file)) {
+    fromFile = JSON.parse(readFileSync(file, 'utf8')) as Partial<Config>;
+  }
+  return finalizeConfig(fromFile, process.env);
+}
+
+export function finalizeConfig(partial: Partial<Config>, env: Record<string, string | undefined> = {}): Config {
+  const cfg: Config = {
+    ...DEFAULTS,
+    ...partial,
+    registration: { ...DEFAULTS.registration, ...partial.registration },
+    oauth: { ...partial.oauth },
+    admins: { ...DEFAULTS.admins, ...partial.admins },
+  };
+  if (env.DRAFTBOX_SESSION_SECRET) cfg.sessionSecret = env.DRAFTBOX_SESSION_SECRET;
+  if (env.DRAFTBOX_ENCRYPTION_KEY) cfg.encryptionKey = env.DRAFTBOX_ENCRYPTION_KEY;
+  if (env.DRAFTBOX_ADMIN_API_KEYS) cfg.adminApiKeys = env.DRAFTBOX_ADMIN_API_KEYS.split(',').map((s) => s.trim()).filter(Boolean);
+  if (env.DRAFTBOX_PORT) cfg.port = Number(env.DRAFTBOX_PORT);
+  if (env.DRAFTBOX_DATA_DIR) cfg.dataDir = env.DRAFTBOX_DATA_DIR;
+  if (env.DRAFTBOX_BASE_URL) cfg.baseUrl = env.DRAFTBOX_BASE_URL;
+
+  cfg.baseUrl = cfg.baseUrl.replace(/\/+$/, '');
+  cfg.admins.emails = cfg.admins.emails.map((e) => e.trim().toLowerCase());
+
+  if (cfg.sessionSecret.length < 32) {
+    throw new Error('sessionSecret must be at least 32 characters (set DRAFTBOX_SESSION_SECRET)');
+  }
+  if (cfg.encryptionKey.length < 32) {
+    throw new Error('encryptionKey must be at least 32 characters (set DRAFTBOX_ENCRYPTION_KEY)');
+  }
+  return cfg;
+}

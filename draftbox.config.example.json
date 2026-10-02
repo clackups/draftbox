@@ -1,0 +1,34 @@
+{
+  "baseUrl": "https://draftbox.example.com",
+  "host": "127.0.0.1",
+  "port": 8080,
+  "dataDir": "/var/lib/draftbox",
+  "trustProxy": true,
+
+  "sessionSecret": "set DRAFTBOX_SESSION_SECRET instead (at least 32 characters)",
+  "encryptionKey": "set DRAFTBOX_ENCRYPTION_KEY instead (at least 32 characters)",
+  "adminApiKeys": [],
+
+  "registration": {
+    "open": false,
+    "invitations": true,
+    "preregistration": true
+  },
+
+  "oauth": {
+    "google": { "clientId": "....apps.googleusercontent.com", "clientSecret": "..." },
+    "github": { "clientId": "...", "clientSecret": "..." },
+    "oidc": {
+      "company": { "label": "Company SSO", "issuer": "https://sso.example.com", "clientId": "...", "clientSecret": "..." }
+    }
+  },
+
+  "admins": {
+    "emails": ["admin@example.com"],
+    "trustedProviders": ["google"]
+  },
+
+  "defaultLanguage": "en",
+  "sessionMaxAgeDays": 30,
+  "gitBinary": "git"
+}
