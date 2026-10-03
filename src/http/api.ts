@@ -2,7 +2,9 @@
 //
 //   POST /api/v1/token-exchange          {"password": "12345678"}
 //        Exchanges a one-time password for the access token it was
-//        assigned to. Each password works once.
+//        assigned to. Each password works once. For a repository
+//        token the response includes the repository, its clone URL
+//        and its default branch; these are null for global tokens.
 //
 //   Administrative API, authenticated with "Authorization: Bearer <key>"
 //   where <key> is one of the configured adminApiKeys:
@@ -80,6 +82,7 @@ export function registerApiRoutes(app: Hono<AppEnv>, svc: Services): void {
     if (!result) return c.json({ error: 'invalid_password' }, 404);
     const repo = result.token.repoId ? await svc.repos.getById(result.token.repoId) : null;
     const owner = await svc.users.getById(result.token.userId);
+    const branch = repo ? await svc.repos.defaultBranch(await svc.repos.open(repo)) : null;
     return c.json({
       token: result.value,
       name: result.token.name,
@@ -87,6 +90,7 @@ export function registerApiRoutes(app: Hono<AppEnv>, svc: Services): void {
       user: owner?.handle ?? null,
       repository: repo && owner ? `${owner.handle}/${repo.name}` : null,
       cloneUrl: repo && owner ? `${svc.ctx.config.baseUrl}/${owner.handle}/${repo.name}.git` : null,
+      branch,
       expiresAt: result.token.expiresAt,
     });
   });

@@ -162,6 +162,12 @@ export class RepoService {
     return git.listRefs('refs/tags/');
   }
 
+  // Branch that HEAD points to (what a fresh clone checks out).
+  async defaultBranch(git: GitRepo): Promise<string> {
+    const target = await git.getHeadTarget();
+    return target.startsWith('refs/heads/') ? target.slice('refs/heads/'.length) : DEFAULT_BRANCH;
+  }
+
   async resolveBranch(git: GitRepo, branch: string): Promise<string | null> {
     if (!validRefName(branch)) return null;
     return git.resolveRef(`refs/heads/${branch}`);

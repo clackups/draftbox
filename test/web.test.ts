@@ -171,9 +171,10 @@ test('access tokens and one-time passwords', async () => {
   });
   let res = await exchange(password);
   assert.equal(res.status, 200);
-  const body = await res.json() as { token: string; access: string };
+  const body = await res.json() as { token: string; access: string; branch: string | null };
   assert.equal(body.token, value);
   assert.equal(body.access, 'read');
+  assert.equal(body.branch, null);
   // Only once.
   assert.equal((await exchange(password)).status, 404);
 
@@ -200,6 +201,19 @@ test('access tokens and one-time passwords', async () => {
   assert.equal(res.status, 200);
   assert.equal(((await res.json()) as { token: string }).token, value);
   assert.ok(await env.svc.tokens.authenticate(value));
+
+  // A repository token also returns the clone URL and default branch.
+  await alice.post('/new', { name: 'otp-repo', description: '', visibility: 'private' });
+  const owner = await env.svc.users.getByEmail('alice@example.com');
+  const repo = (await env.svc.repos.getByName(owner!, 'otp-repo'))!;
+  const scoped = await alice.post('/settings/tokens', { name: 'scoped', repoId: repo.id, access: 'write', validity: '', otp: '1' });
+  const scopedOtp = /<p class="otp">(\d{4}) (\d{4})<\/p>/.exec(scoped.text)!;
+  res = await exchange(scopedOtp[1] + scopedOtp[2]);
+  assert.equal(res.status, 200);
+  const scopedBody = await res.json() as { repository: string; cloneUrl: string; branch: string };
+  assert.equal(scopedBody.repository, 'alice/otp-repo');
+  assert.match(scopedBody.cloneUrl, /\/alice\/otp-repo\.git$/);
+  assert.equal(scopedBody.branch, 'main');
 
   // Advanced mode shows the API call and the clone command.
   await alice.post('/settings', { advancedMode: '1' });
