@@ -381,7 +381,6 @@ ${error ? html`<p class="flash flash-error">${t('error.' + error)}</p>` : ''}
     <small class="muted">${t('repo.name_help')}</small></label>
   <label>${t('repo.description')}<input type="text" name="description" value="${values.description}" maxlength="500"></label>
   ${visibilityFields(page, values.visibility)}
-  <label class="check"><input type="checkbox" name="readme" value="1" checked> ${t('repo.init_readme')}</label>
   <div><button class="btn">${t('repo.create')}</button></div>
 </form>`);
 }

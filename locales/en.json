@@ -108,7 +108,6 @@
   "repo.name": "Repository name",
   "repo.name_help": "Letters, digits, dots, dashes and underscores. The name is part of the repository address.",
   "repo.description": "Description (optional)",
-  "repo.init_readme": "Start with a README.md file",
   "repo.create": "Create repository",
   "repo.none": "No repositories to show.",
   "repo.created_on": "Created {date}",

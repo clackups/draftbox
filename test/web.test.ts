@@ -61,12 +61,17 @@ test('repositories: create, edit, history, tags and visibility', async () => {
   const alice = new Browser(env);
   await alice.login('alice@example.com');
 
-  let r = await alice.post('/new', { name: 'notes', description: 'My notes', visibility: 'private', readme: '1' });
+  let r = await alice.post('/new', { name: 'notes', description: 'My notes', visibility: 'private' });
   assert.equal(r.res.status, 302);
   assert.equal(r.res.headers.get('Location'), '/alice/notes');
 
+  // New repositories start empty.
   let page = await alice.get('/alice/notes');
   assert.match(page.text, /My notes/);
+  assert.doesNotMatch(page.text, /README\.md/);
+  r = await alice.post('/alice/notes/new', { ref: 'main', base: '', dir: '', name: 'README.md', content: '# Notes\n', message: '' });
+  assert.equal(r.res.status, 302);
+  page = await alice.get('/alice/notes');
   assert.match(page.text, /README\.md/);
 
   // Create a file in a sub-folder.
@@ -127,7 +132,8 @@ test('repositories: create, edit, history, tags and visibility', async () => {
 test('simple mode hides branches; advanced mode manages them', async () => {
   const alice = new Browser(env);
   await alice.login('alice@example.com');
-  await alice.post('/new', { name: 'branchy', description: '', visibility: 'private', readme: '1' });
+  await alice.post('/new', { name: 'branchy', description: '', visibility: 'private' });
+  await alice.post('/alice/branchy/new', { ref: 'main', base: '', dir: '', name: 'README.md', content: '# Branchy\n', message: '' });
 
   assert.equal((await alice.post('/alice/branchy/branches', { name: 'draft', from: 'main' })).res.status, 403);
   await alice.post('/settings', { name: 'Alice', handle: 'alice', language: 'en', theme: 'auto', advancedMode: '1' });
@@ -200,7 +206,7 @@ test('blocking hides the user and ends sessions', async () => {
   await admin.login(ADMIN_EMAIL);
   const bob = new Browser(env);
   await bob.login('bob@example.com');
-  await bob.post('/new', { name: 'pub', description: '', visibility: 'public', readme: '1' });
+  await bob.post('/new', { name: 'pub', description: '', visibility: 'public' });
   const anon = new Browser(env);
   assert.equal((await anon.get('/bob/pub')).res.status, 200);
 

@@ -131,7 +131,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     const f = await formFields(c);
     const values = { name: (f.name ?? '').trim(), description: f.description ?? '', visibility: (f.visibility === 'public' ? 'public' : 'private') as Visibility };
     try {
-      const repo = await svc.repos.create(user, { ...values, initReadme: f.readme === '1' });
+      const repo = await svc.repos.create(user, { ...values, initReadme: false });
       setFlash(c, 'ok', 'repo_created');
       return c.redirect(urlPath(user.handle, repo.name));
     } catch (err) {

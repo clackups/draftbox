@@ -108,7 +108,6 @@
   "repo.name": "Name des Repositorys",
   "repo.name_help": "Buchstaben (ohne Umlaute), Ziffern, Punkte, Bindestriche und Unterstriche. Der Name ist Teil der Adresse des Repositorys.",
   "repo.description": "Beschreibung (optional)",
-  "repo.init_readme": "Mit einer Datei README.md beginnen",
   "repo.create": "Repository anlegen",
   "repo.none": "Keine Repositorys vorhanden.",
   "repo.created_on": "Angelegt am {date}",
