@@ -3,7 +3,7 @@ import { type Repo, type User, contactEmailOf } from '../db/models.ts';
 import type { CommitInfo, GitRepo, RefInfo, TreeEntry } from '../git/types.ts';
 import type { Hunk } from '../util/diff.ts';
 import { html, raw, urlPath, type Html } from './html.ts';
-import { csrfField, formatDate, formatDay, layout } from './layout.ts';
+import { csrfField, formatDate, formatDay, layout, localTime } from './layout.ts';
 import { DEFAULT_BRANCH } from '../services/repos.ts';
 
 export interface RepoCtx {
@@ -263,7 +263,7 @@ export function commitPage(rc: RepoCtx, c: CommitInfo, changes: FileChange[]): s
 <section class="card">
   <h2>${subject}</h2>
   ${body.join('\n').trim() ? html`<pre class="commitmsg">${body.join('\n').trim()}</pre>` : ''}
-  <p class="muted">${c.author.name} &lt;${c.author.email}&gt; &middot; ${formatDate(rc.page, c.author.time)}</p>
+  <p class="muted">${c.author.name} &lt;${c.author.email}&gt; &middot; ${localTime(rc.page, c.author.time)}</p>
   <p class="mono small">${t('repo.commit')} ${c.oid}
     ${c.parents.map((p) => html` &middot; ${t('repo.parent')} <a href="${repoUrl(rc, 'commit', p)}">${p.slice(0, 8)}</a>`)}</p>
   <p><a class="btn btn-small btn-secondary" href="${repoUrl(rc, 'tree') + '?ref=' + c.oid}">${t('repo.browse_at_commit')}</a></p>

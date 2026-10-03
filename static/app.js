@@ -2,6 +2,21 @@
 (function () {
   'use strict';
 
+  // Timestamps rendered in the viewer's local timezone.
+  var lang = document.documentElement.lang;
+  var locale = lang === 'uk' ? 'uk-UA' : lang === 'de' ? 'de-DE' : 'en-GB';
+  Array.prototype.forEach.call(document.querySelectorAll('time[data-localtime]'), function (el) {
+    var d = new Date(el.getAttribute('datetime'));
+    if (isNaN(d.getTime())) return;
+    try {
+      el.textContent = d.toLocaleString(locale, {
+        year: 'numeric', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short'
+      });
+      el.title = d.toISOString();
+    } catch (e) { /* keep the server-rendered text */ }
+  });
+
   document.addEventListener('submit', function (ev) {
     var form = ev.target;
     var msg = form.getAttribute && form.getAttribute('data-confirm');

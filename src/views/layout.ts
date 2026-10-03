@@ -14,6 +14,13 @@ export function formatDate(page: Page, iso: string | number | null | undefined):
   return d.toLocaleString(locale, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+// A timestamp that app.js re-renders in the browser's local timezone;
+// the server-formatted text remains as the no-JavaScript fallback.
+export function localTime(page: Page, unix: number): Html {
+  const iso = new Date(unix * 1000).toISOString();
+  return html`<time datetime="${iso}" data-localtime>${formatDate(page, unix)}</time>`;
+}
+
 export function formatDay(page: Page, iso: string | null | undefined): string {
   if (!iso) return '';
   const locale = page.lang === 'uk' ? 'uk-UA' : page.lang === 'de' ? 'de-DE' : 'en-GB';
