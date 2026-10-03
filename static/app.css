@@ -244,7 +244,7 @@ article.markdown .filehead { margin: -1rem -1.2rem 1rem; }
 .code table { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 0.86em; }
 .code td { border: none; padding: 0 0.6rem; }
 .code td.ln { width: 1%; color: var(--muted); text-align: right; user-select: none; white-space: nowrap; }
-.code pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
+.code pre { margin: 0; padding: 0; background: none; border-radius: 0; overflow: visible; white-space: pre-wrap; word-break: break-word; }
 .code tr.add { background: var(--add-bg); }
 .code tr.del { background: var(--del-bg); }
 .code tr.hunk { background: var(--code-bg); color: var(--muted); }
