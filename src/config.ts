@@ -17,6 +17,15 @@ export interface OidcProviderConfig extends OAuthClientConfig {
   issuer: string;
 }
 
+export interface MailConfig {
+  // 'log' writes messages to the server log instead of sending them.
+  transport: 'smtp' | 'sendmail' | 'log';
+  // Sender address, e.g. "Draftbox <noreply@example.com>".
+  from: string;
+  smtp?: { host: string; port?: number; secure?: boolean; user?: string; password?: string };
+  sendmailPath?: string;
+}
+
 export interface Config {
   // Public URL of the service, without trailing slash. Used for OAuth
   // redirect URIs and links shown to users.
@@ -59,6 +68,9 @@ export interface Config {
   // Bearer keys accepted by the administrative API (/api/admin/...).
   adminApiKeys: string[];
 
+  // Outgoing email (contact address verification).
+  mail: MailConfig;
+
   defaultLanguage: string;
   sessionMaxAgeDays: number;
   // Trust X-Forwarded-For for client addresses (set behind a reverse proxy).
@@ -77,6 +89,7 @@ const DEFAULTS: Config = {
   oauth: {},
   admins: { emails: [], trustedProviders: ['google', 'github'] },
   adminApiKeys: [],
+  mail: { transport: 'log', from: 'Draftbox <noreply@localhost>' },
   defaultLanguage: 'en',
   sessionMaxAgeDays: 30,
   trustProxy: false,
@@ -98,6 +111,7 @@ export function finalizeConfig(partial: Partial<Config>, env: Record<string, str
     registration: { ...DEFAULTS.registration, ...partial.registration },
     oauth: { ...partial.oauth },
     admins: { ...DEFAULTS.admins, ...partial.admins },
+    mail: { ...DEFAULTS.mail, ...partial.mail },
   };
   if (env.DRAFTBOX_SESSION_SECRET) cfg.sessionSecret = env.DRAFTBOX_SESSION_SECRET;
   if (env.DRAFTBOX_ENCRYPTION_KEY) cfg.encryptionKey = env.DRAFTBOX_ENCRYPTION_KEY;
@@ -105,6 +119,7 @@ export function finalizeConfig(partial: Partial<Config>, env: Record<string, str
   if (env.DRAFTBOX_PORT) cfg.port = Number(env.DRAFTBOX_PORT);
   if (env.DRAFTBOX_DATA_DIR) cfg.dataDir = env.DRAFTBOX_DATA_DIR;
   if (env.DRAFTBOX_BASE_URL) cfg.baseUrl = env.DRAFTBOX_BASE_URL;
+  if (env.DRAFTBOX_SMTP_PASSWORD && cfg.mail.smtp) cfg.mail.smtp = { ...cfg.mail.smtp, password: env.DRAFTBOX_SMTP_PASSWORD };
 
   cfg.baseUrl = cfg.baseUrl.replace(/\/+$/, '');
   cfg.admins.emails = cfg.admins.emails.map((e) => e.trim().toLowerCase());

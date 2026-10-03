@@ -2,16 +2,19 @@ import { rm } from 'node:fs/promises';
 import type { Context } from './context.ts';
 import { ServiceError } from './context.ts';
 import type { ReadView, Tx } from '../db/store.ts';
-import { type Invitation, type Preregistration, type Repo, type User, type UserPrefs, USER_THEMES } from '../db/models.ts';
-import { randomId, sha256hex } from '../util/crypto.ts';
-import { isSupportedLanguage } from '../i18n/index.ts';
+import {
+  type Branding, type Invitation, type Preregistration, type Repo, type User, type UserPrefs,
+  contactEmailOf, DEFAULT_BRANDING, USER_THEMES,
+} from '../db/models.ts';
+import { randomId, randomSecret, sha256hex } from '../util/crypto.ts';
+import { isSupportedLanguage, translator } from '../i18n/index.ts';
 
 // Handles that would collide with top-level web routes.
 const RESERVED_HANDLES = new Set([
   'admin', 'api', 'auth', 'login', 'logout', 'settings', 'new', 'explore',
   'static', 'invite', 'tokens', 'help', 'about', 'branding', 'favicon.ico',
   'robots.txt', 'draftbox', 'root', 'system', 'git', 'user', 'users', 'repos',
-  'preview', 'lang', 'theme',
+  'preview', 'lang', 'theme', 'verify-email',
 ]);
 
 export const HANDLE_RE = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/;
@@ -25,6 +28,47 @@ export interface LoginRequest {
   inviteCode?: string;
   language?: string;
 }
+
+export const MAX_DESCRIPTION = 1000;
+export const MAX_HOMEPAGE = 300;
+const VERIFY_HOURS = 48;
+const RESEND_SECONDS = 60;
+
+// Deliberately loose: the address is proven by the verification email.
+const EMAIL_RE = /^[^\s@<>()",;:\\]+@[^\s@<>()",;:\\]+\.[^\s@<>()",;:\\]+$/;
+
+export function isValidEmail(email: string): boolean {
+  return email.length <= 254 && EMAIL_RE.test(email);
+}
+
+// Returns the normalized homepage URL ('' clears it). A missing scheme
+// is completed with https:// since users often type just the domain.
+export function normalizeHomepage(input: string): string {
+  let v = input.trim();
+  if (!v) return '';
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(v)) v = 'https://' + v;
+  let url: URL;
+  try {
+    url = new URL(v);
+  } catch {
+    throw new ServiceError('invalid_homepage');
+  }
+  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || !url.hostname.includes('.') || url.username || url.password) {
+    throw new ServiceError('invalid_homepage');
+  }
+  const out = url.href;
+  if (out.length > MAX_HOMEPAGE) throw new ServiceError('invalid_homepage');
+  return out;
+}
+
+export function normalizeDescription(input: string): string {
+  const v = input.replace(/\r\n?/g, '\n').trim();
+  if (v.length > MAX_DESCRIPTION) throw new ServiceError('description_too_long');
+  if (/<[a-zA-Z\/!?]/.test(v)) throw new ServiceError('description_html');
+  return v;
+}
+
+export type ContactEmailResult = 'unchanged' | 'updated' | 'verification_sent';
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -148,7 +192,11 @@ export class UserService {
     }
   }
 
-  async updateProfile(userId: string, patch: { handle?: string; name?: string; prefs?: Partial<UserPrefs> }): Promise<User> {
+  async updateProfile(userId: string, patch: {
+    handle?: string; name?: string; description?: string; homepage?: string; prefs?: Partial<UserPrefs>;
+  }): Promise<User> {
+    const description = patch.description === undefined ? undefined : normalizeDescription(patch.description);
+    const homepage = patch.homepage === undefined ? undefined : normalizeHomepage(patch.homepage);
     return this.store.transact(`Update profile of ${userId}`, async (tx) => {
       const user = await tx.get<User>(`users/${userId}.json`);
       if (!user) throw new ServiceError('not_found', 404);
@@ -161,6 +209,8 @@ export class UserService {
         user.handle = h;
       }
       if (patch.name !== undefined) user.name = patch.name.trim().slice(0, 100) || user.name;
+      if (description !== undefined) user.description = description;
+      if (homepage !== undefined) user.homepage = homepage;
       if (patch.prefs) {
         const p = patch.prefs;
         if (p.language !== undefined && isSupportedLanguage(p.language)) user.prefs.language = p.language;
@@ -170,6 +220,112 @@ export class UserService {
       tx.put(`users/${user.id}.json`, user);
       return user;
     });
+  }
+
+  // Changes the contact address. The primary address is accepted at once;
+  // any other address takes effect only after the user opens the link
+  // emailed to it.
+  async requestContactEmail(userId: string, input: string): Promise<ContactEmailResult> {
+    const email = input.trim();
+    if (!email) throw new ServiceError('contact_email_required');
+    if (!isValidEmail(email)) throw new ServiceError('invalid_email');
+    let code = '';
+    const result = await this.store.transact(`Change contact email of ${userId}`, async (tx): Promise<ContactEmailResult> => {
+      code = '';
+      const user = await tx.get<User>(`users/${userId}.json`);
+      if (!user) throw new ServiceError('not_found', 404);
+      const same = (a: string, b: string) => normalizeEmail(a) === normalizeEmail(b);
+      if (same(email, contactEmailOf(user)) && !user.pendingContactEmail) return 'unchanged';
+      if (user.pendingContactEmail && same(email, user.pendingContactEmail.email)) return 'unchanged';
+      if (same(email, user.email) || same(email, contactEmailOf(user))) {
+        this.dropPending(tx, user);
+        user.contactEmail = same(email, user.email) ? user.email : contactEmailOf(user);
+        tx.put(`users/${user.id}.json`, user);
+        return 'updated';
+      }
+      code = this.startVerification(tx, user, email);
+      return 'verification_sent';
+    });
+    if (code) await this.sendVerification(userId, code);
+    return result;
+  }
+
+  async resendContactVerification(userId: string): Promise<void> {
+    const code = await this.store.transact(`Resend contact email verification for ${userId}`, async (tx) => {
+      const user = await tx.get<User>(`users/${userId}.json`);
+      if (!user) throw new ServiceError('not_found', 404);
+      if (!user.pendingContactEmail) throw new ServiceError('no_pending_email');
+      return this.startVerification(tx, user, user.pendingContactEmail.email);
+    });
+    await this.sendVerification(userId, code);
+  }
+
+  async cancelContactEmail(userId: string): Promise<void> {
+    await this.store.transact(`Cancel contact email change of ${userId}`, async (tx) => {
+      const user = await tx.get<User>(`users/${userId}.json`);
+      if (!user) throw new ServiceError('not_found', 404);
+      this.dropPending(tx, user);
+      tx.put(`users/${user.id}.json`, user);
+    });
+  }
+
+  // The user and the address a verification code confirms, or null when
+  // the code is unknown, already used or expired.
+  async findContactVerification(code: string, view: ReadView = this.store.view()): Promise<{ user: User; email: string } | null> {
+    const id = await view.getText(`index/email-verify/${sha256hex(code)}`);
+    const user = id ? await this.getById(id, view) : null;
+    const p = user?.pendingContactEmail;
+    if (!user || !p || p.codeHash !== sha256hex(code) || Date.parse(p.expiresAt) < Date.now()) return null;
+    return { user, email: p.email };
+  }
+
+  async confirmContactEmail(code: string): Promise<User> {
+    return this.store.transact('Verify contact email', async (tx) => {
+      const found = await this.findContactVerification(code, tx);
+      if (!found) throw new ServiceError('verification_invalid');
+      const { user, email } = found;
+      this.dropPending(tx, user);
+      user.contactEmail = email;
+      tx.put(`users/${user.id}.json`, user);
+      return user;
+    });
+  }
+
+  private startVerification(tx: Tx, user: User, email: string): string {
+    const prev = user.pendingContactEmail;
+    if (prev && Date.now() - Date.parse(prev.sentAt) < RESEND_SECONDS * 1000) throw new ServiceError('verification_too_soon');
+    this.dropPending(tx, user);
+    const code = randomSecret();
+    const now = Date.now();
+    user.pendingContactEmail = {
+      email,
+      codeHash: sha256hex(code),
+      sentAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + VERIFY_HOURS * 3600 * 1000).toISOString(),
+    };
+    tx.putText(`index/email-verify/${user.pendingContactEmail.codeHash}`, user.id);
+    tx.put(`users/${user.id}.json`, user);
+    return code;
+  }
+
+  private dropPending(tx: Tx, user: User): void {
+    if (user.pendingContactEmail) tx.delete(`index/email-verify/${user.pendingContactEmail.codeHash}`);
+    delete user.pendingContactEmail;
+  }
+
+  private async sendVerification(userId: string, code: string): Promise<void> {
+    const view = this.store.view();
+    const user = await this.getById(userId, view);
+    if (!user?.pendingContactEmail) return;
+    const branding = { ...DEFAULT_BRANDING, ...(await view.get<Partial<Branding>>('settings/branding.json')) };
+    const t = translator(user.prefs.language);
+    const params = { site: branding.siteName, name: user.name, hours: VERIFY_HOURS, link: `${this.ctx.config.baseUrl}/verify-email/${code}` };
+    try {
+      await this.ctx.mailer.send({ to: user.pendingContactEmail.email, subject: t('email.verify_subject', params), text: t('email.verify_body', params) });
+    } catch (err) {
+      console.error('Sending verification email failed:', err);
+      throw new ServiceError('mail_failed', 502);
+    }
   }
 
   async setBlocked(userId: string, blocked: boolean, actor: string): Promise<User> {
@@ -214,6 +370,7 @@ export class UserService {
         tx.delete(`index/identity/${ident.provider}/${sha256hex(ident.subject)}`);
       }
       tx.delete(`index/email/${emailKey(user.email)}`);
+      if (user.pendingContactEmail) tx.delete(`index/email-verify/${user.pendingContactEmail.codeHash}`);
       tx.delete(`index/handle/${user.handle}`);
       tx.delete(`users/${userId}.json`);
     });

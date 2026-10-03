@@ -28,6 +28,12 @@
     "trustedProviders": ["google"]
   },
 
+  "mail": {
+    "transport": "smtp",
+    "from": "Draftbox <noreply@draftbox.example.com>",
+    "smtp": { "host": "smtp.example.com", "port": 587, "secure": false, "user": "draftbox", "password": "set DRAFTBOX_SMTP_PASSWORD instead" }
+  },
+
   "defaultLanguage": "en",
   "sessionMaxAgeDays": 30,
   "gitBinary": "git"

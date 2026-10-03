@@ -15,6 +15,7 @@
 //   index/repo/<ownerId>/<repoName>      repoId
 //   index/invite/<sha256(code)>          inviteId
 //   index/otp/<hmac(password)>           tokenId
+//   index/email-verify/<sha256(code)>    userId (pending contact email)
 
 export const SCHEMA_VERSION = 1;
 
@@ -45,9 +46,27 @@ export interface UserPrefs {
   theme: UserTheme;
 }
 
+// A contact address change waiting for the user to open the
+// verification link sent to it.
+export interface PendingContactEmail {
+  email: string;
+  codeHash: string;
+  sentAt: string;
+  expiresAt: string;
+}
+
 export interface User {
   id: string;
+  // Primary address from the OAuth login; identifies the account.
   email: string;
+  // Verified address shown in the public profile and used as the author
+  // of commits made in the web editor. Absent in records created before
+  // it was introduced; see contactEmailOf().
+  contactEmail?: string;
+  pendingContactEmail?: PendingContactEmail;
+  // Plain text shown in the public profile.
+  description?: string;
+  homepage?: string;
   handle: string;
   name: string;
   createdAt: string;
@@ -58,6 +77,10 @@ export interface User {
   sshKeys: SshKey[];
   // Incremented to invalidate all existing web sessions of the user.
   sessionEpoch: number;
+}
+
+export function contactEmailOf(user: User): string {
+  return user.contactEmail ?? user.email;
 }
 
 export type Visibility = 'public' | 'private';

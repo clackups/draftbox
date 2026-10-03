@@ -4,7 +4,8 @@ import { type AppEnv, type Page, type Services, formFields, isSecure, requireUse
 import { LANG_COOKIE } from '../auth/session.ts';
 import { LANGUAGES, languageName } from '../i18n/index.ts';
 import { VALIDITY_MONTHS, OTP_LIFETIME_DAYS, isExpired, type IssuedToken } from '../services/tokens.ts';
-import { type AccessToken, type Repo, type User, type UserTheme, USER_THEMES } from '../db/models.ts';
+import { type AccessToken, type Repo, type User, type UserTheme, contactEmailOf, USER_THEMES } from '../db/models.ts';
+import { MAX_DESCRIPTION, isValidEmail } from '../services/users.ts';
 import { html, type Html } from '../views/html.ts';
 import { csrfField, formDayOrNever, formatDate, layout } from '../views/layout.ts';
 import { ServiceError } from '../services/context.ts';
@@ -16,28 +17,59 @@ function settingsNav(page: Page, active: string): Html {
   return html`<nav class="tabs">${item('/settings', 'settings.profile')}${item('/settings/tokens', 'nav.tokens')}</nav>`;
 }
 
-function profilePage(page: Page, user: User, error?: string): string {
+// `form` holds the submitted values when the page is shown again after a
+// validation error, so that the user can correct them instead of
+// retyping everything.
+function profilePage(page: Page, user: User, error?: string, form?: Record<string, string>): string {
   const { t } = page;
+  const pending = user.pendingContactEmail;
+  const value = (key: string, saved: string) => form?.[key] ?? saved;
+  const language = value('language', user.prefs.language);
+  const theme = value('theme', user.prefs.theme);
+  const advanced = form ? form.advancedMode === '1' : user.prefs.advancedMode;
   return layout(page, t('nav.settings'), html`<h1>${t('nav.settings')}</h1>
 ${settingsNav(page, '/settings')}
 ${error ? html`<p class="flash flash-error">${t('error.' + error)}</p>` : ''}
+${pending ? html`<div class="warning stack">
+  <span>${t('settings.contact_pending', { email: pending.email, current: contactEmailOf(user) })}</span>
+  <div class="row">
+    <form method="post" action="/settings/contact-email/resend" class="inline">${csrfField(page)}<button class="btn btn-small btn-secondary">${t('settings.contact_resend')}</button></form>
+    <form method="post" action="/settings/contact-email/cancel" class="inline">${csrfField(page)}<button class="btn btn-small btn-secondary">${t('settings.contact_cancel')}</button></form>
+  </div>
+</div>` : ''}
 <form method="post" action="/settings" class="card stack">
   ${csrfField(page)}
-  <label>${t('field.email')}<input type="email" value="${user.email}" disabled></label>
-  <label>${t('field.name')}<input type="text" name="name" value="${user.name}" maxlength="100"></label>
-  <label>${t('field.handle')}<input type="text" name="handle" value="${user.handle}" pattern="[a-z0-9][a-z0-9\\-]{0,37}[a-z0-9]?" required>
+  <label>${t('field.email')}<input type="email" value="${user.email}" disabled>
+    <small class="muted">${t('settings.primary_email_help')}</small></label>
+  <label>${t('settings.contact_email')}<input type="email" name="contactEmail" value="${value('contactEmail', pending ? pending.email : contactEmailOf(user))}" required maxlength="254">
+    <small class="muted">${t('settings.contact_email_help')}</small></label>
+  <label>${t('field.name')}<input type="text" name="name" value="${value('name', user.name)}" maxlength="100"></label>
+  <label>${t('field.handle')}<input type="text" name="handle" value="${value('handle', user.handle)}" pattern="[a-z0-9][a-z0-9\\-]{0,37}[a-z0-9]?" required>
     <small class="muted">${t('settings.handle_help')}</small></label>
+  <label>${t('settings.description')}<textarea name="description" rows="4" maxlength="${MAX_DESCRIPTION}" class="short">${value('description', user.description ?? '')}</textarea>
+    <small class="muted">${t('settings.description_help')}</small></label>
+  <label>${t('settings.homepage')}<input type="text" name="homepage" value="${value('homepage', user.homepage ?? '')}" maxlength="300" inputmode="url" placeholder="https://">
+    <small class="muted">${t('settings.homepage_help')}</small></label>
   <label>${t('field.language')}<select name="language">
-    ${LANGUAGES.map((l) => html`<option value="${l}" ${l === user.prefs.language ? 'selected' : ''}>${languageName(l)}</option>`)}
+    ${LANGUAGES.map((l) => html`<option value="${l}" ${l === language ? 'selected' : ''}>${languageName(l)}</option>`)}
   </select></label>
   <label>${t('field.theme')}<select name="theme">
-    ${USER_THEMES.map((th) => html`<option value="${th}" ${th === user.prefs.theme ? 'selected' : ''}>${th === 'site'
+    ${USER_THEMES.map((th) => html`<option value="${th}" ${th === theme ? 'selected' : ''}>${th === 'site'
       ? t('theme.site', { theme: t('theme.' + page.branding.defaultTheme) }) : t('theme.' + th)}</option>`)}
   </select></label>
-  <label class="check"><input type="checkbox" name="advancedMode" value="1" ${user.prefs.advancedMode ? 'checked' : ''}>
+  <label class="check"><input type="checkbox" name="advancedMode" value="1" ${advanced ? 'checked' : ''}>
     <span><strong>${t('settings.advanced_mode')}</strong><br><small class="muted">${t('settings.advanced_mode_help')}</small></span></label>
   <div><button class="btn">${t('action.save')}</button></div>
 </form>`);
+}
+
+function verifyPage(page: Page, user: User, email: string, code: string): string {
+  const { t } = page;
+  return layout(page, t('verify.title'), html`<section class="card narrow stack">
+  <h1>${t('verify.title')}</h1>
+  <p>${t('verify.text', { email, handle: user.handle })}</p>
+  <form method="post" action="/verify-email/${code}">${csrfField(page)}<button class="btn">${t('verify.confirm')}</button></form>
+</section>`);
 }
 
 function tokenScope(page: Page, token: AccessToken, repos: Map<string, Repo>): string {
@@ -125,19 +157,66 @@ export function registerSettingsRoutes(app: Hono<AppEnv>, svc: Services): void {
   app.post('/settings', async (c) => {
     const user = requireUser(c);
     const f = await formFields(c);
+    let contact: Awaited<ReturnType<typeof svc.users.requestContactEmail>> = 'unchanged';
     try {
+      // Fields missing from the form are left unchanged.
+      const contactEmail = f.contactEmail === undefined ? undefined : f.contactEmail.trim();
+      if (contactEmail === '') throw new ServiceError('contact_email_required');
+      if (contactEmail !== undefined && !isValidEmail(contactEmail)) throw new ServiceError('invalid_email');
       const updated = await svc.users.updateProfile(user.id, {
         name: f.name,
         handle: f.handle,
+        description: f.description,
+        homepage: f.homepage,
         prefs: { language: f.language, theme: f.theme as UserTheme, advancedMode: f.advancedMode === '1' },
       });
       setCookie(c, LANG_COOKIE, updated.prefs.language, { path: '/', sameSite: 'Lax', secure: isSecure(svc), maxAge: 365 * 86400 });
+      if (contactEmail !== undefined) contact = await svc.users.requestContactEmail(user.id, contactEmail);
     } catch (err) {
-      if (err instanceof ServiceError && err.status === 400) return c.html(profilePage(c.var.page, user, err.code), 400);
+      if (err instanceof ServiceError && (err.status === 400 || err.code === 'mail_failed')) {
+        const fresh = (await svc.users.getById(user.id)) ?? user;
+        return c.html(profilePage(c.var.page, fresh, err.code, f), err.status as 400);
+      }
       throw err;
     }
-    setFlash(c, 'ok', 'settings_saved');
+    setFlash(c, 'ok', contact === 'verification_sent' ? 'verification_sent' : 'settings_saved');
     return c.redirect('/settings');
+  });
+
+  app.post('/settings/contact-email/resend', async (c) => {
+    const user = requireUser(c);
+    try {
+      await svc.users.resendContactVerification(user.id);
+    } catch (err) {
+      if (err instanceof ServiceError && (err.status === 400 || err.code === 'mail_failed')) {
+        setFlash(c, 'error', 'error.' + err.code);
+        return c.redirect('/settings');
+      }
+      throw err;
+    }
+    setFlash(c, 'ok', 'verification_sent');
+    return c.redirect('/settings');
+  });
+
+  app.post('/settings/contact-email/cancel', async (c) => {
+    const user = requireUser(c);
+    await svc.users.cancelContactEmail(user.id);
+    setFlash(c, 'ok', 'contact_change_cancelled');
+    return c.redirect('/settings');
+  });
+
+  // The emailed link opens a confirmation page; the change is applied by
+  // its POST so that mail scanners prefetching links do not verify it.
+  app.get('/verify-email/:code', async (c) => {
+    const found = await svc.users.findContactVerification(c.req.param('code'));
+    if (!found) throw new ServiceError('verification_invalid');
+    return c.html(verifyPage(c.var.page, found.user, found.email, c.req.param('code')));
+  });
+
+  app.post('/verify-email/:code', async (c) => {
+    await svc.users.confirmContactEmail(c.req.param('code'));
+    setFlash(c, 'ok', 'contact_verified');
+    return c.redirect(c.var.page.user ? '/settings' : '/');
   });
 
   app.get('/settings/tokens', async (c) => {

@@ -4,6 +4,7 @@ import type { Config } from '../config.ts';
 import type { GitBackend } from '../git/types.ts';
 import { MetaStore } from '../db/store.ts';
 import { SCHEMA_VERSION } from '../db/models.ts';
+import { createMailer, type Mailer } from './mail.ts';
 
 export class ServiceError extends Error {
   // Machine-readable code; also used as an i18n key suffix (error.<code>).
@@ -22,15 +23,17 @@ export class Context {
   readonly git: GitBackend;
   readonly store: MetaStore;
   readonly dataDir: string;
+  readonly mailer: Mailer;
 
-  private constructor(config: Config, git: GitBackend, store: MetaStore, dataDir: string) {
+  private constructor(config: Config, git: GitBackend, store: MetaStore, dataDir: string, mailer: Mailer) {
     this.config = config;
     this.git = git;
     this.store = store;
     this.dataDir = dataDir;
+    this.mailer = mailer;
   }
 
-  static async create(config: Config, git: GitBackend): Promise<Context> {
+  static async create(config: Config, git: GitBackend, mailer: Mailer = createMailer(config)): Promise<Context> {
     const dataDir = resolve(config.dataDir);
     mkdirSync(join(dataDir, 'repos'), { recursive: true });
     const metaRepo = await git.openOrInit(join(dataDir, 'meta.git'));
@@ -41,7 +44,7 @@ export class Context {
         tx.put('schema.json', { version: SCHEMA_VERSION });
       });
     }
-    return new Context(config, git, store, dataDir);
+    return new Context(config, git, store, dataDir, mailer);
   }
 
   repoPath(repoId: string): string {

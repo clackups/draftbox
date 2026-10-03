@@ -57,7 +57,7 @@ function footer(page: Page): Html {
 export function layout(page: Page, title: string, body: Html): string {
   const theme = page.theme === 'auto' ? '' : page.theme;
   const flash = page.flash
-    ? html`<div class="flash flash-${page.flash.kind}" role="status">${page.t('flash.' + page.flash.key)}</div>`
+    ? html`<div class="flash flash-${page.flash.kind}" role="status">${page.t(page.flash.key.startsWith('error.') ? page.flash.key : 'flash.' + page.flash.key)}</div>`
     : '';
   return html`<!doctype html>
 <html lang="${page.lang}"${theme ? raw(` data-theme="${theme}"`) : ''}>

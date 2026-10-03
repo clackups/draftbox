@@ -280,3 +280,71 @@ test('user appearance preference overrides the site default theme', async () => 
     siteName: 'Draftbox', primaryColor: '#2f6f4f', accentColor: '#c9822b', defaultTheme: 'auto', footerText: '', customCss: '',
   });
 });
+
+test('contact email is verified by link; description and homepage appear in the profile', async () => {
+  await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'dana@example.com' });
+  const dana = new Browser(env);
+  assert.equal((await dana.login('dana@example.com', 'Dana')).status, 302);
+  assert.match((await dana.get('/settings')).text, /name="contactEmail" value="dana@example.com"/);
+
+  const before = env.mailer.sent.length;
+  let r = await dana.post('/settings', {
+    name: 'Dana', handle: 'dana', language: 'en', theme: 'site',
+    contactEmail: 'Dana.Work@example.org', description: 'Writer.\nI <3 tea & cake', homepage: 'example.com/dana',
+  });
+  assert.equal(r.res.status, 302);
+  assert.equal(env.mailer.sent.length, before + 1);
+  const mail = env.mailer.sent[before];
+  assert.equal(mail.to, 'Dana.Work@example.org');
+  const link = /http:\/\/localhost:8080(\/verify-email\/[A-Za-z0-9_-]+)/.exec(mail.text)![1];
+
+  // Not changed until verified.
+  let profile = await new Browser(env).get('/dana');
+  assert.match(profile.text, /mailto:dana@example.com/);
+  assert.doesNotMatch(profile.text, /Dana\.Work/);
+  assert.match(profile.text, /I &lt;3 tea &amp; cake/);
+  assert.match(profile.text, /href="https:\/\/example.com\/dana"/);
+  assert.match((await dana.get('/settings')).text, /We sent a confirmation link to Dana.Work@example.org/);
+
+  r = await dana.post('/settings/contact-email/resend', {});
+  assert.equal(r.res.status, 302);
+  assert.match((await dana.get('/settings')).text, /less than a minute ago/);
+  assert.equal(env.mailer.sent.length, before + 1);
+
+  // The link works without a session and needs an explicit confirmation.
+  const anon = new Browser(env);
+  const confirm = await anon.get(link);
+  assert.equal(confirm.res.status, 200);
+  assert.match(confirm.text, /Dana.Work@example.org/);
+  assert.equal((await anon.post(link, {})).res.status, 302);
+  assert.equal((await anon.get(link)).res.status, 400);
+
+  profile = await new Browser(env).get('/dana');
+  assert.match(profile.text, /mailto:Dana.Work@example.org/);
+
+  // Commits from the web editor use the contact address.
+  await dana.post('/new', { name: 'notes', description: '', visibility: 'private' });
+  await dana.post('/dana/notes/new', { ref: 'main', base: '', dir: '', name: 'a.md', content: 'x\n', message: '' });
+  const oid = /\/commit\/([0-9a-f]{40})/.exec((await dana.get('/dana/notes/commits')).text)![1];
+  assert.match((await dana.get(`/dana/notes/commit/${oid}`)).text, /&lt;Dana.Work@example.org&gt;/);
+
+  // Switching back to the primary address needs no verification.
+  r = await dana.post('/settings', { name: 'Dana', handle: 'dana', language: 'en', theme: 'site', contactEmail: 'DANA@example.com' });
+  assert.equal(r.res.status, 302);
+  assert.equal(env.mailer.sent.length, before + 1);
+  assert.match((await new Browser(env).get('/dana')).text, /mailto:dana@example.com/);
+
+  const base = { name: 'Dana', handle: 'dana', language: 'en', theme: 'site' };
+  r = await dana.post('/settings', { ...base, contactEmail: '' });
+  assert.equal(r.res.status, 400);
+  assert.match(r.text, /Please enter a contact email/);
+  r = await dana.post('/settings', { ...base, description: 'Hi <b>there</b>', homepage: 'example.net' });
+  assert.equal(r.res.status, 400);
+  assert.match(r.text, /must not contain HTML tags/);
+  // The submitted values are kept for correction.
+  assert.match(r.text, /<textarea name="description"[^>]*>Hi &lt;b&gt;there&lt;\/b&gt;<\/textarea>/);
+  assert.match(r.text, /name="homepage" value="example.net"/);
+  r = await dana.post('/settings', { ...base, homepage: 'javascript:alert(1)' });
+  assert.equal(r.res.status, 400);
+  assert.match(r.text, /Invalid homepage/);
+});

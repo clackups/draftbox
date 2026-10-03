@@ -16,6 +16,9 @@ async function main(): Promise<void> {
   if (config.oauth.dev?.enabled) {
     console.warn('WARNING: development login is enabled; anyone can sign in as any email address.');
   }
+  if (config.mail.transport === 'log') {
+    console.warn('WARNING: no mail transport configured; emails are written to the log instead of being sent.');
+  }
   serve({ fetch: app.fetch, hostname: config.host, port: config.port }, (info) => {
     console.log(`Draftbox listening on http://${info.address}:${info.port} (public URL ${config.baseUrl})`);
     console.log(`Data directory: ${ctx.dataDir}; git backend: ${ctx.git.name}`);

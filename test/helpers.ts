@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { finalizeConfig, type Config } from '../src/config.ts';
 import { Context } from '../src/services/context.ts';
 import { NodegitBackend } from '../src/git/nodegit.ts';
+import { MemoryMailer } from '../src/services/mail.ts';
 import { createApp, createServices, type Services } from '../src/http/app.ts';
 
 export const ADMIN_EMAIL = 'admin@example.com';
@@ -14,6 +15,7 @@ export interface TestEnv {
   svc: Services;
   app: ReturnType<typeof createApp>;
   config: Config;
+  mailer: MemoryMailer;
   cleanup(): void;
 }
 
@@ -30,10 +32,11 @@ export async function setup(overrides: Partial<Config> = {}): Promise<TestEnv> {
     registration: { open: false, invitations: true, preregistration: true },
     ...overrides,
   });
-  const ctx = await Context.create(config, new NodegitBackend());
+  const mailer = new MemoryMailer();
+  const ctx = await Context.create(config, new NodegitBackend(), mailer);
   const svc = createServices(ctx);
   const app = createApp(svc);
-  return { dir, svc, app, config, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+  return { dir, svc, app, config, mailer, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
 // Minimal browser: keeps cookies and the CSRF token of the last page.

@@ -1,5 +1,5 @@
 import type { Page } from '../http/app.ts';
-import type { Repo, User } from '../db/models.ts';
+import { type Repo, type User, contactEmailOf } from '../db/models.ts';
 import type { CommitInfo, GitRepo, RefInfo, TreeEntry } from '../git/types.ts';
 import type { Hunk } from '../util/diff.ts';
 import { html, raw, urlPath, type Html } from './html.ts';
@@ -424,7 +424,13 @@ export function explorePage(page: Page, items: Array<{ repo: Repo; owner: User }
 
 export function profilePage(page: Page, owner: User, repos: Repo[]): string {
   const { t } = page;
+  const email = contactEmailOf(owner);
   return layout(page, owner.handle, html`<div class="pagehead"><h1>${owner.name} <span class="muted">@${owner.handle}</span></h1></div>
+<section class="card profile">
+  ${owner.description ? html`<p class="profile-about">${owner.description}</p>` : ''}
+  <p><a href="mailto:${email}">${email}</a></p>
+  ${owner.homepage ? html`<p><a href="${owner.homepage}" rel="nofollow ugc noopener" target="_blank">${owner.homepage.replace(/^https?:\/\//, '').replace(/\/$/, '')}</a></p>` : ''}
+</section>
 <h2>${t('profile.repositories')}</h2>
 ${repoList(page, repos.map((repo) => ({ repo, owner })), false)}`);
 }

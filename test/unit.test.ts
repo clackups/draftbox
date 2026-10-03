@@ -8,6 +8,7 @@ import { decrypt, encrypt } from '../src/util/crypto.ts';
 import { validFilePath, validRefName, validRepoName } from '../src/services/repos.ts';
 import { negotiateLanguage, translator } from '../src/i18n/index.ts';
 import { sign, unsign } from '../src/auth/session.ts';
+import { isValidEmail, normalizeDescription, normalizeHomepage } from '../src/services/users.ts';
 
 test('diffLines finds insertions and deletions', () => {
   const ops = diffLines('a\nb\nc\n', 'a\nB\nc\nd\n')!;
@@ -88,4 +89,21 @@ test('all locales have the same keys', () => {
   const en = load('en');
   assert.deepEqual(load('uk'), en);
   assert.deepEqual(load('de'), en);
+});
+
+test('profile field validation', () => {
+  assert.equal(normalizeHomepage(''), '');
+  assert.equal(normalizeHomepage(' example.com '), 'https://example.com/');
+  assert.equal(normalizeHomepage('http://example.com/a?b=1'), 'http://example.com/a?b=1');
+  for (const bad of ['javascript:alert(1)', 'ftp://example.com', 'https://localhost', 'https://u:p@example.com', 'not a url']) {
+    assert.throws(() => normalizeHomepage(bad), /invalid_homepage/, bad);
+  }
+  assert.equal(normalizeDescription(' a\r\nb '), 'a\nb');
+  assert.equal(normalizeDescription('1 < 2 and I <3 it'), '1 < 2 and I <3 it');
+  assert.throws(() => normalizeDescription('<script>x</script>'), /description_html/);
+  assert.throws(() => normalizeDescription('x'.repeat(1001)), /description_too_long/);
+  assert.ok(isValidEmail('first.last+tag@example.co.uk'));
+  assert.ok(!isValidEmail('no-at-sign'));
+  assert.ok(!isValidEmail('a@b'));
+  assert.ok(!isValidEmail('a b@example.com'));
 });

@@ -58,7 +58,13 @@ OAuth redirect URIs to register with providers:
 Configuration values can be overridden with `DRAFTBOX_CONFIG` (path of
 the config file), `DRAFTBOX_SESSION_SECRET`, `DRAFTBOX_ENCRYPTION_KEY`,
 `DRAFTBOX_ADMIN_API_KEYS` (comma separated), `DRAFTBOX_PORT`,
-`DRAFTBOX_DATA_DIR` and `DRAFTBOX_BASE_URL`.
+`DRAFTBOX_DATA_DIR`, `DRAFTBOX_BASE_URL` and `DRAFTBOX_SMTP_PASSWORD`.
+
+Outgoing email (confirmation links for users' contact addresses) is
+configured in the `mail` section: `"transport": "smtp"` with an `smtp`
+block (see the example config), or `"transport": "sendmail"` to use the
+local sendmail binary (`sendmailPath`, default `/usr/sbin/sendmail`).
+Without a `mail` section, messages are only written to the server log.
 
 Run behind a TLS-terminating reverse proxy; set `trustProxy` so that
 rate limiting sees client addresses.

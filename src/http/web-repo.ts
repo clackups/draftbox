@@ -2,7 +2,7 @@ import type { Hono } from 'hono';
 import { type AppEnv, type Ctx, type Services, formFields, requireUser, setFlash } from './app.ts';
 import { ServiceError } from '../services/context.ts';
 import { DEFAULT_BRANCH, validFilePath } from '../services/repos.ts';
-import type { Visibility } from '../db/models.ts';
+import { contactEmailOf, type Visibility } from '../db/models.ts';
 import { isMarkdownPath, renderMarkdown, type LinkResolver } from '../util/markdown.ts';
 import { diffLines, hunks } from '../util/diff.ts';
 import { urlPath } from '../views/html.ts';
@@ -109,7 +109,7 @@ function requireBranch(rc: RepoCtx): void {
 
 function author(c: Ctx): { name: string; email: string } {
   const u = requireUser(c);
-  return { name: u.name, email: u.email };
+  return { name: u.name, email: contactEmailOf(u) };
 }
 
 export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {

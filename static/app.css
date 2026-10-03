@@ -86,6 +86,7 @@ h3 { font-size: 1.05rem; }
 .center { text-align: center; }
 .error { color: var(--danger); }
 .warning { background: var(--warn-bg); border-radius: var(--radius); padding: 0.6em 0.9em; }
+div.warning { margin: 0 0 1rem; }
 [hidden] { display: none !important; }
 
 /* Layout */
@@ -163,6 +164,8 @@ input[type=text], input[type=email], input[type=file], select, textarea {
 .color-dialog input[type=range] { width: 100%; accent-color: var(--brand); }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--brand); outline-offset: 1px; }
 textarea { resize: vertical; min-height: 10rem; line-height: 1.5; }
+textarea.short { min-height: 5rem; }
+.profile-about { white-space: pre-line; overflow-wrap: anywhere; }
 input:disabled { opacity: 0.7; }
 
 .btn {
