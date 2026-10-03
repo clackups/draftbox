@@ -113,6 +113,10 @@ export interface AccessToken {
   repoId: string | null;
   access: TokenAccess;
   secretHash: string;
+  // Token value encrypted with the server key, so that one-time passwords
+  // can be issued later without changing the value. Absent in tokens
+  // created before it was introduced.
+  encryptedValue?: string;
   createdAt: string;
   // null means the token never expires.
   expiresAt: string | null;

@@ -177,8 +177,55 @@ test('access tokens and one-time passwords', async () => {
   // Only once.
   assert.equal((await exchange(password)).status, 404);
 
-  // Revoking invalidates the token.
+  // Simple mode hides the command-line examples.
+  assert.doesNotMatch(r.text, /curl|git clone/);
+  assert.match(r.text, /Enter the token as the password/);
+
+  // A one-time password for an existing token keeps the token value.
   const tokenId = value.split('_')[1];
+  const otpFor = async () => {
+    await alice.get('/settings/tokens');
+    const page = await alice.post(`/settings/tokens/${tokenId}/otp`, {});
+    assert.equal(page.res.status, 200);
+    assert.doesNotMatch(page.text, /dbx_/);
+    const m = /<p class="otp">(\d{4}) (\d{4})<\/p>/.exec(page.text)!;
+    return { page, password: m[1] + m[2] };
+  };
+  const first = await otpFor();
+  assert.match(first.page.text, /One-time password for laptop/);
+  const second = await otpFor();
+  // The new password replaces the pending one.
+  assert.equal((await exchange(first.password)).status, 404);
+  res = await exchange(second.password);
+  assert.equal(res.status, 200);
+  assert.equal(((await res.json()) as { token: string }).token, value);
+  assert.ok(await env.svc.tokens.authenticate(value));
+
+  // Advanced mode shows the API call and the clone command.
+  await alice.post('/settings', { advancedMode: '1' });
+  const advanced = await otpFor();
+  assert.match(advanced.page.text, /curl -X POST/);
+  const created = await alice.post('/settings/tokens', { name: 'adv', repoId: '', access: 'write', validity: '' });
+  assert.match(created.text, /git clone http:\/\/alice:TOKEN@/);
+  await alice.post('/settings', {});
+
+  // Tokens created before values were stored encrypted get a new value.
+  const legacy = await alice.post('/settings/tokens', { name: 'old', repoId: '', access: 'write', validity: '' });
+  const legacyValue = /value="(dbx_[0-9a-f]{16}_[A-Za-z0-9_-]{43})"/.exec(legacy.text)![1];
+  const legacyId = legacyValue.split('_')[1];
+  await env.svc.ctx.store.transact('Simulate legacy token', async (tx) => {
+    const tok = (await tx.get<Record<string, unknown>>(`tokens/${legacyId}.json`))!;
+    delete tok.encryptedValue;
+    tx.put(`tokens/${legacyId}.json`, tok);
+  });
+  assert.match((await alice.get('/settings/tokens')).text, /The current token value will stop working/);
+  const reissued = await alice.post(`/settings/tokens/${legacyId}/otp`, {});
+  const newValue = /value="(dbx_[0-9a-f]{16}_[A-Za-z0-9_-]{43})"/.exec(reissued.text)![1];
+  assert.notEqual(newValue, legacyValue);
+  assert.equal(await env.svc.tokens.authenticate(legacyValue), null);
+  assert.ok(await env.svc.tokens.authenticate(newValue));
+
+  // Revoking invalidates the token.
   await alice.get('/settings/tokens');
   await alice.post(`/settings/tokens/${tokenId}/revoke`, {});
   assert.equal(await env.svc.tokens.authenticate(value), null);

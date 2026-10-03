@@ -96,7 +96,7 @@ ${tokens.length === 0 ? html`<p class="muted">${t('tokens.none')}</p>` : html`<d
     <td>${formatDate(page, tok.createdAt)}</td>
     <td>${isExpired(tok, now) ? html`<span class="badge badge-warn">${t('tokens.expired')}</span>` : formDayOrNever(page, tok.expiresAt)}</td>
     <td class="actions">
-      ${isExpired(tok, now) ? '' : html`<form method="post" action="/settings/tokens/${tok.id}/otp" class="inline" data-confirm="${t('tokens.otp_confirm')}">${csrfField(page)}<button class="btn btn-small btn-secondary">${t('tokens.new_otp')}</button></form>`}
+      ${isExpired(tok, now) ? '' : html`<form method="post" action="/settings/tokens/${tok.id}/otp" class="inline"${otpConfirm(page, tok, now)}>${csrfField(page)}<button class="btn btn-small btn-secondary">${t('tokens.new_otp')}</button></form>`}
       <form method="post" action="/settings/tokens/${tok.id}/revoke" class="inline" data-confirm="${t('tokens.revoke_confirm')}">${csrfField(page)}<button class="btn btn-small btn-danger">${t('tokens.revoke')}</button></form>
     </td></tr>`)}</tbody></table></div>`}
 </section>
@@ -124,26 +124,37 @@ ${tokens.length === 0 ? html`<p class="muted">${t('tokens.none')}</p>` : html`<d
 </section>`);
 }
 
+// Asking for a one-time password is harmless unless it replaces the
+// token value (old tokens) or a pending password.
+function otpConfirm(page: Page, tok: AccessToken, now: number): Html {
+  const { t } = page;
+  if (!tok.encryptedValue) return html` data-confirm="${t('tokens.otp_confirm')}"`;
+  if (tok.otp && Date.parse(tok.otp.expiresAt) > now) return html` data-confirm="${t('tokens.otp_replace_confirm')}"`;
+  return html``;
+}
+
 function issuedPage(page: Page, svc: Services, user: User, issued: IssuedToken, repo: Repo | null): string {
   const { t } = page;
   const base = svc.ctx.config.baseUrl;
+  const advanced = user.prefs.advancedMode;
   const cloneUrl = repo ? `${base}/${user.handle}/${repo.name}.git` : `${base}/${user.handle}/REPOSITORY.git`;
-  return layout(page, t('tokens.issued_title'), html`<h1>${t('tokens.issued_title')}</h1>
+  const title = issued.value ? t('tokens.issued_title') : t('tokens.otp_title', { name: issued.token.name });
+  return layout(page, title, html`<h1>${title}</h1>
 <section class="card">
-  <p class="warning">${t('tokens.copy_now')}</p>
+  ${issued.value ? html`<p class="warning">${t('tokens.copy_now')}</p>
   <label>${t('tokens.token_value')}
-    <div class="copyrow"><input type="text" readonly value="${issued.value}" class="mono" id="token-value"><button type="button" class="btn btn-small" data-copy="token-value">${t('action.copy')}</button></div></label>
+    <div class="copyrow"><input type="text" readonly value="${issued.value}" class="mono" id="token-value"><button type="button" class="btn btn-small" data-copy="token-value">${t('action.copy')}</button></div></label>` : ''}
   ${issued.otp ? html`<div class="otp-box">
     <p>${t('tokens.otp_is')}</p>
     <p class="otp">${issued.otp.slice(0, 4)} ${issued.otp.slice(4)}</p>
     <p class="muted">${t('tokens.otp_explain', { date: formatDate(page, issued.token.otp?.expiresAt) })}</p>
-    <pre class="mono">curl -X POST -H 'Content-Type: application/json' \\
-  -d '{"password":"${issued.otp}"}' ${base}/api/v1/token-exchange</pre>
+    ${advanced ? html`<pre class="mono">curl -X POST -H 'Content-Type: application/json' \\
+  -d '{"password":"${issued.otp}"}' ${base}/api/v1/token-exchange</pre>` : ''}
   </div>` : ''}
-  <h2>${t('tokens.how_to_use')}</h2>
-  <p>${t('tokens.usage_git')}</p>
+  ${issued.value ? html`<h2>${t('tokens.how_to_use')}</h2>
+  ${advanced ? html`<p>${t('tokens.usage_git')}</p>
   <pre class="mono">git clone ${cloneUrl.replace('://', `://${user.handle}:TOKEN@`)}</pre>
-  <p class="muted">${t('tokens.usage_password')}</p>
+  <p class="muted">${t('tokens.usage_password')}</p>` : html`<p>${t('tokens.usage_simple')}</p>`}` : ''}
   <p><a class="btn" href="/settings/tokens">${t('action.done')}</a></p>
 </section>`);
 }
@@ -250,7 +261,7 @@ export function registerSettingsRoutes(app: Hono<AppEnv>, svc: Services): void {
 
   app.post('/settings/tokens/:id/otp', async (c) => {
     const user = requireUser(c);
-    const issued = await svc.tokens.regenerateWithOtp(user, c.req.param('id'));
+    const issued = await svc.tokens.issueOtp(user, c.req.param('id'));
     const repo = issued.token.repoId ? await svc.repos.getById(issued.token.repoId) : null;
     c.header('Cache-Control', 'no-store');
     return c.html(issuedPage(c.var.page, svc, user, issued, repo));

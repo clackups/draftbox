@@ -19,7 +19,9 @@ export interface CreateTokenOptions {
 
 export interface IssuedToken {
   token: AccessToken;
-  value: string;
+  // Set when a new token value was generated; it is shown to the user
+  // once. Absent when only a one-time password was added.
+  value?: string;
   otp?: string;
 }
 
@@ -83,6 +85,7 @@ export class TokenService {
       repoId: opts.repoId,
       access: opts.access === 'read' ? 'read' : 'write',
       secretHash: sha256hex(secret),
+      encryptedValue: encrypt(this.ctx.config.encryptionKey, value),
       createdAt: now.toISOString(),
       expiresAt: opts.validityMonths ? addMonths(now, opts.validityMonths).toISOString() : null,
     };
@@ -112,19 +115,27 @@ export class TokenService {
     }
   }
 
-  // Assigns a new one-time password to an existing token. Token values are
-  // stored only as hashes, so the token is re-issued with a new secret; the
-  // previous value stops working.
-  async regenerateWithOtp(user: User, tokenId: string): Promise<IssuedToken> {
+  // Assigns a new one-time password to an existing token, replacing a
+  // pending one. The token value stays the same. Tokens created before
+  // values were kept encrypted cannot be recovered, so those are re-issued
+  // with a new secret and the previous value stops working.
+  async issueOtp(user: User, tokenId: string): Promise<IssuedToken> {
     let result: IssuedToken | null = null;
     await this.store.transact(`Issue one-time password for token ${tokenId}`, async (tx) => {
       const token = await tx.get<AccessToken>(`tokens/${tokenId}.json`);
       if (!token || token.userId !== user.id) throw new ServiceError('not_found', 404);
       if (isExpired(token)) throw new ServiceError('token_expired');
-      const secret = randomSecret();
-      const value = `dbx_${token.id}_${secret}`;
-      token.secretHash = sha256hex(secret);
-      const otp = await this.attachOtp(tx, token, value);
+      let value: string | undefined;
+      let current: string;
+      if (token.encryptedValue) {
+        current = decrypt(this.ctx.config.encryptionKey, token.encryptedValue);
+      } else {
+        const secret = randomSecret();
+        value = current = `dbx_${token.id}_${secret}`;
+        token.secretHash = sha256hex(secret);
+        token.encryptedValue = encrypt(this.ctx.config.encryptionKey, value);
+      }
+      const otp = await this.attachOtp(tx, token, current);
       tx.put(`tokens/${token.id}.json`, token);
       result = { token, value, otp };
     });
