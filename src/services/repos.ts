@@ -152,6 +152,18 @@ export class RepoService {
     return this.ctx.git.open(this.ctx.repoPath(repo.id));
   }
 
+  // Time of the newest commit on any branch, or the creation time of
+  // an empty repository, in milliseconds since the epoch.
+  async lastUpdated(repo: Repo): Promise<number> {
+    let latest = Date.parse(repo.createdAt);
+    const git = await this.open(repo);
+    for (const ref of await git.listRefs('refs/heads/')) {
+      const commit = ref.commitOid ? await git.getCommit(ref.commitOid) : null;
+      if (commit) latest = Math.max(latest, commit.committer.time * 1000);
+    }
+    return latest;
+  }
+
   // ---- Content operations -------------------------------------------------
 
   async branches(git: GitRepo): Promise<RefInfo[]> {

@@ -253,6 +253,20 @@ test('access tokens and one-time passwords', async () => {
   assert.ok(limited);
 });
 
+test('token form defaults to the most recently updated repository', async () => {
+  const alice = new Browser(env);
+  await alice.login('alice@example.com');
+  await alice.post('/new', { name: 'scope-old', description: '', visibility: 'private' });
+  // Commit times have one-second resolution.
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  await alice.post('/alice/scope-old/new', { ref: 'main', base: '', dir: '', name: 'a.md', content: 'a\n', message: '' });
+  const owner = await env.svc.users.getByEmail('alice@example.com');
+  const old = (await env.svc.repos.getByName(owner!, 'scope-old'))!;
+  const page = await alice.get('/settings/tokens');
+  const selected = /<option value="([^"]*)" selected>/.exec(page.text);
+  assert.equal(selected?.[1], old.id);
+});
+
 test('forms without CSRF token are rejected', async () => {
   const alice = new Browser(env);
   await alice.login('alice@example.com');

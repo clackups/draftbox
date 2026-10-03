@@ -77,7 +77,10 @@ function tokenScope(page: Page, token: AccessToken, repos: Map<string, Repo>): s
   return repos.get(token.repoId)?.name ?? page.t('tokens.scope_deleted');
 }
 
-function tokensPage(page: Page, user: User, tokens: AccessToken[], repos: Repo[]): string {
+// The scope selector defaults to `selectedRepoId` (the most recently
+// updated repository): a token limited to one repository is the safer
+// choice for most users.
+function tokensPage(page: Page, user: User, tokens: AccessToken[], repos: Repo[], selectedRepoId: string | null): string {
   const { t } = page;
   const repoMap = new Map(repos.map((r) => [r.id, r]));
   const now = Date.now();
@@ -107,7 +110,7 @@ ${tokens.length === 0 ? html`<p class="muted">${t('tokens.none')}</p>` : html`<d
   <label>${t('field.name')}<input type="text" name="name" required maxlength="100" placeholder="${t('tokens.name_placeholder')}"></label>
   <label>${t('tokens.scope')}<select name="repoId">
     <option value="">${t('tokens.scope_all')}</option>
-    ${repos.map((r) => html`<option value="${r.id}">${t('tokens.scope_repo', { name: r.name })}</option>`)}
+    ${repos.map((r) => html`<option value="${r.id}"${r.id === selectedRepoId ? ' selected' : ''}>${t('tokens.scope_repo', { name: r.name })}</option>`)}
   </select></label>
   <fieldset><legend>${t('tokens.access')}</legend>
     <label class="check"><input type="radio" name="access" value="write" checked> ${t('tokens.read_write')}</label>
@@ -233,7 +236,10 @@ export function registerSettingsRoutes(app: Hono<AppEnv>, svc: Services): void {
   app.get('/settings/tokens', async (c) => {
     const user = requireUser(c);
     const [tokens, repos] = await Promise.all([svc.tokens.listForUser(user.id), svc.repos.listByOwner(user.id)]);
-    return c.html(tokensPage(c.var.page, user, tokens, repos));
+    const updated = await Promise.all(repos.map((r) => svc.repos.lastUpdated(r)));
+    let newest = -1;
+    for (let i = 0; i < repos.length; i++) if (newest < 0 || updated[i] > updated[newest]) newest = i;
+    return c.html(tokensPage(c.var.page, user, tokens, repos, newest < 0 ? null : repos[newest].id));
   });
 
   app.post('/settings/tokens', async (c) => {
