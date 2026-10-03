@@ -2,7 +2,7 @@ import { rm } from 'node:fs/promises';
 import type { Context } from './context.ts';
 import { ServiceError } from './context.ts';
 import type { ReadView, Tx } from '../db/store.ts';
-import type { Invitation, Preregistration, Repo, User, UserPrefs } from '../db/models.ts';
+import { type Invitation, type Preregistration, type Repo, type User, type UserPrefs, USER_THEMES } from '../db/models.ts';
 import { randomId, sha256hex } from '../util/crypto.ts';
 import { isSupportedLanguage } from '../i18n/index.ts';
 
@@ -119,7 +119,7 @@ export class UserService {
         prefs: {
           language: req.language && isSupportedLanguage(req.language) ? req.language : this.ctx.config.defaultLanguage,
           advancedMode: false,
-          theme: 'auto',
+          theme: 'site',
         },
         sshKeys: [],
         sessionEpoch: 0,
@@ -165,7 +165,7 @@ export class UserService {
         const p = patch.prefs;
         if (p.language !== undefined && isSupportedLanguage(p.language)) user.prefs.language = p.language;
         if (p.advancedMode !== undefined) user.prefs.advancedMode = p.advancedMode;
-        if (p.theme !== undefined && ['auto', 'light', 'dark'].includes(p.theme)) user.prefs.theme = p.theme;
+        if (p.theme !== undefined && USER_THEMES.includes(p.theme)) user.prefs.theme = p.theme;
       }
       tx.put(`users/${user.id}.json`, user);
       return user;

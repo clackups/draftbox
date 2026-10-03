@@ -84,6 +84,42 @@ ${svc.ctx.config.registration.preregistration ? '' : html`<p class="warning">${t
 </table></div></section>`);
 }
 
+// A plain hex text field; app.js adds a swatch button that opens the
+// modal color dialog. The browser's native color picker is avoided
+// because it is a separate window that stays open while the user
+// navigates away.
+function colorField(name: string, value: string): Html {
+  return html`<span class="color-field"><input type="text" name="${name}" value="${value}" required maxlength="7"
+    pattern="#[0-9a-fA-F]{6}" class="mono" data-color-picker spellcheck="false" autocomplete="off"></span>`;
+}
+
+const COLOR_PRESETS = [
+  '#2f6f4f', '#3a7d44', '#1f6f8b', '#2b5797', '#3f51b5', '#6a3d9a', '#8e44ad', '#b03a7a',
+  '#b3372f', '#c0392b', '#c9822b', '#d35400', '#b7950b', '#7f8c3a', '#5d6d7e', '#34495e',
+];
+
+function colorDialog(page: Page): Html {
+  const { t } = page;
+  const slider = (part: string, max: number) =>
+    html`<label>${t('admin.color_' + part)}<input type="range" min="0" max="${max}" data-part="${part}"></label>`;
+  return html`<dialog class="color-dialog" aria-labelledby="color-dialog-title">
+  <form method="dialog" class="stack">
+    <h2 id="color-dialog-title">${t('admin.color_choose')}</h2>
+    <div class="color-preview" data-part="preview"></div>
+    <div class="color-presets">${COLOR_PRESETS.map((c) =>
+      html`<button type="button" class="color-swatch" data-color="${c}" style="background:${c}" title="${c}" aria-label="${c}"></button>`)}</div>
+    ${slider('hue', 360)}
+    ${slider('saturation', 100)}
+    ${slider('lightness', 100)}
+    <label>${t('admin.color_hex')}<input type="text" maxlength="7" class="mono" data-part="hex" spellcheck="false" autocomplete="off"></label>
+    <div class="row">
+      <button type="submit" value="ok" class="btn">${t('action.done')}</button>
+      <button type="submit" value="cancel" class="btn btn-secondary" formnovalidate>${t('action.cancel')}</button>
+    </div>
+  </form>
+</dialog>`;
+}
+
 function brandingPage(page: Page, b: Branding): string {
   const { t } = page;
   const themes: Theme[] = ['auto', 'light', 'dark'];
@@ -91,8 +127,8 @@ function brandingPage(page: Page, b: Branding): string {
 <section class="card"><form method="post" action="/admin/branding" class="stack">${csrfField(page)}
   <label>${t('admin.site_name')}<input type="text" name="siteName" value="${b.siteName}" maxlength="60" required></label>
   <div class="row">
-    <label>${t('admin.primary_color')}<input type="color" name="primaryColor" value="${b.primaryColor}"></label>
-    <label>${t('admin.accent_color')}<input type="color" name="accentColor" value="${b.accentColor}"></label>
+    <label>${t('admin.primary_color')}${colorField('primaryColor', b.primaryColor)}</label>
+    <label>${t('admin.accent_color')}${colorField('accentColor', b.accentColor)}</label>
     <label>${t('admin.default_theme')}<select name="defaultTheme">
       ${themes.map((th) => html`<option value="${th}" ${th === b.defaultTheme ? 'selected' : ''}>${t('theme.' + th)}</option>`)}</select></label>
   </div>
@@ -101,6 +137,7 @@ function brandingPage(page: Page, b: Branding): string {
     <small class="muted">${t('admin.custom_css_help')}</small></label>
   <div><button class="btn">${t('action.save')}</button></div>
 </form></section>
+${colorDialog(page)}
 <section class="card"><h2>${t('admin.logo')}</h2>
   ${b.hasLogo ? html`<p><img src="/branding/logo" alt="" class="logo-preview"></p>` : html`<p class="muted">${t('admin.no_logo')}</p>`}
   <form method="post" action="/admin/branding/logo" enctype="multipart/form-data" class="row">${csrfField(page)}

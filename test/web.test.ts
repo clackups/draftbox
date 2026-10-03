@@ -136,7 +136,7 @@ test('simple mode hides branches; advanced mode manages them', async () => {
   await alice.post('/alice/branchy/new', { ref: 'main', base: '', dir: '', name: 'README.md', content: '# Branchy\n', message: '' });
 
   assert.equal((await alice.post('/alice/branchy/branches', { name: 'draft', from: 'main' })).res.status, 403);
-  await alice.post('/settings', { name: 'Alice', handle: 'alice', language: 'en', theme: 'auto', advancedMode: '1' });
+  await alice.post('/settings', { name: 'Alice', handle: 'alice', language: 'en', theme: 'site', advancedMode: '1' });
   let r = await alice.post('/alice/branchy/branches', { name: 'draft', from: 'main' });
   assert.equal(r.res.status, 302);
 
@@ -148,7 +148,7 @@ test('simple mode hides branches; advanced mode manages them', async () => {
   assert.notEqual((await alice.get('/alice/branchy/raw/README.md')).text, 'draft text\n');
 
   // Back in simple mode the ref parameter is ignored for branches.
-  await alice.post('/settings', { name: 'Alice', handle: 'alice', language: 'en', theme: 'auto' });
+  await alice.post('/settings', { name: 'Alice', handle: 'alice', language: 'en', theme: 'site' });
   page = await alice.get('/alice/branchy/raw/README.md?ref=draft');
   assert.notEqual(page.text, 'draft text\n');
 });
@@ -257,4 +257,26 @@ test('branding and language selection', async () => {
   assert.match((await anon.get('/')).text, /Anmelden/);
   const uk = new Browser(env);
   assert.match((await uk.get('/', { 'Accept-Language': 'uk-UA,uk;q=0.9' })).text, /lang="uk"/);
+});
+
+test('user appearance preference overrides the site default theme', async () => {
+  const admin = new Browser(env);
+  await admin.login(ADMIN_EMAIL);
+  await admin.get('/admin/branding');
+  await admin.post('/admin/branding', {
+    siteName: 'Draftbox', primaryColor: '#2f6f4f', accentColor: '#c9822b', defaultTheme: 'dark', footerText: '', customCss: '',
+  });
+  await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'carol-theme@example.com' });
+  const carol = new Browser(env);
+  assert.equal((await carol.login('carol-theme@example.com')).status, 302);
+  const settings = await carol.get('/settings');
+  assert.match(settings.text, /<option value="site" selected>/);
+  assert.match((await carol.get('/')).text, /data-theme="dark"/);
+  await carol.post('/settings', { name: 'Carol', handle: 'carol-theme', language: 'en', theme: 'auto' });
+  assert.doesNotMatch((await carol.get('/')).text, /data-theme=/);
+  await carol.post('/settings', { name: 'Carol', handle: 'carol-theme', language: 'en', theme: 'light' });
+  assert.match((await carol.get('/')).text, /data-theme="light"/);
+  await admin.post('/admin/branding', {
+    siteName: 'Draftbox', primaryColor: '#2f6f4f', accentColor: '#c9822b', defaultTheme: 'auto', footerText: '', customCss: '',
+  });
 });

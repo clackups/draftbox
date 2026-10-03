@@ -167,7 +167,7 @@ export function createApp(svc: Services): Hono<AppEnv> {
       admin,
       csrf,
       branding,
-      theme: user && user.prefs.theme !== 'auto' ? user.prefs.theme : branding.defaultTheme,
+      theme: user && user.prefs.theme !== 'site' ? user.prefs.theme : branding.defaultTheme,
       path: c.req.path,
       flash: readFlash(c),
       devLogin: cfg.oauth.dev?.enabled === true,

@@ -27,6 +27,83 @@
     else { document.execCommand('copy'); done(); }
   });
 
+  // Color fields: a swatch button opens a modal dialog, so the picker
+  // must be closed (Done or Cancel/Escape) before anything else on the
+  // page can be used.
+  var colorDialog = document.querySelector('dialog.color-dialog');
+  if (colorDialog && colorDialog.showModal) {
+    var HEX_RE = /^#[0-9a-fA-F]{6}$/;
+    var part = function (name) { return colorDialog.querySelector('[data-part=' + name + ']'); };
+    var hue = part('hue'), sat = part('saturation'), light = part('lightness');
+    var hexInput = part('hex'), previewBox = part('preview');
+    var target = null, current = '#000000';
+
+    var hexToHsl = function (hex) {
+      var r = parseInt(hex.slice(1, 3), 16) / 255, g = parseInt(hex.slice(3, 5), 16) / 255, b = parseInt(hex.slice(5, 7), 16) / 255;
+      var max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+      var h = 0, l = (max + min) / 2, s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+      if (d !== 0) {
+        if (max === r) h = ((g - b) / d) % 6;
+        else if (max === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        h = (h * 60 + 360) % 360;
+      }
+      return [Math.round(h), Math.round(s * 100), Math.round(l * 100)];
+    };
+    var hslToHex = function (h, s, l) {
+      s /= 100; l /= 100;
+      var c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l - c / 2;
+      var rgb = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+      return '#' + rgb.map(function (v) { return ('0' + Math.round((v + m) * 255).toString(16)).slice(-2); }).join('');
+    };
+    var show = function (hex, fromSliders) {
+      current = hex.toLowerCase();
+      previewBox.style.background = current;
+      if (document.activeElement !== hexInput) hexInput.value = current;
+      if (!fromSliders) {
+        var hsl = hexToHsl(current);
+        hue.value = hsl[0]; sat.value = hsl[1]; light.value = hsl[2];
+      }
+    };
+
+    [hue, sat, light].forEach(function (el) {
+      el.addEventListener('input', function () { show(hslToHex(+hue.value % 360, +sat.value, +light.value), true); });
+    });
+    hexInput.addEventListener('input', function () {
+      var v = hexInput.value.trim();
+      if (v.charAt(0) !== '#') v = '#' + v;
+      if (HEX_RE.test(v)) show(v);
+    });
+    colorDialog.querySelectorAll('[data-color]').forEach(function (sw) {
+      sw.addEventListener('click', function () { show(sw.getAttribute('data-color')); });
+    });
+    colorDialog.addEventListener('close', function () {
+      if (target && colorDialog.returnValue === 'ok') {
+        target.value = current;
+        target.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      if (target) target.previousSibling.focus();
+      target = null;
+    });
+
+    document.querySelectorAll('input[data-color-picker]').forEach(function (input) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'color-button';
+      btn.setAttribute('aria-label', document.getElementById('color-dialog-title').textContent);
+      var sync = function () { if (HEX_RE.test(input.value)) btn.style.background = input.value; };
+      sync();
+      input.addEventListener('input', sync);
+      input.parentNode.insertBefore(btn, input);
+      btn.addEventListener('click', function () {
+        target = input;
+        show(HEX_RE.test(input.value) ? input.value : '#000000');
+        colorDialog.returnValue = '';
+        colorDialog.showModal();
+      });
+    });
+  }
+
   // Markdown editor: write/preview tabs and unsaved-changes warning.
   var editor = document.querySelector('form[data-editor]');
   if (editor) {

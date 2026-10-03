@@ -4,7 +4,7 @@ import { type AppEnv, type Page, type Services, formFields, isSecure, requireUse
 import { LANG_COOKIE } from '../auth/session.ts';
 import { LANGUAGES, languageName } from '../i18n/index.ts';
 import { VALIDITY_MONTHS, OTP_LIFETIME_DAYS, isExpired, type IssuedToken } from '../services/tokens.ts';
-import type { AccessToken, Repo, Theme, User } from '../db/models.ts';
+import { type AccessToken, type Repo, type User, type UserTheme, USER_THEMES } from '../db/models.ts';
 import { html, type Html } from '../views/html.ts';
 import { csrfField, formDayOrNever, formatDate, layout } from '../views/layout.ts';
 import { ServiceError } from '../services/context.ts';
@@ -18,7 +18,6 @@ function settingsNav(page: Page, active: string): Html {
 
 function profilePage(page: Page, user: User, error?: string): string {
   const { t } = page;
-  const themes: Theme[] = ['auto', 'light', 'dark'];
   return layout(page, t('nav.settings'), html`<h1>${t('nav.settings')}</h1>
 ${settingsNav(page, '/settings')}
 ${error ? html`<p class="flash flash-error">${t('error.' + error)}</p>` : ''}
@@ -32,7 +31,8 @@ ${error ? html`<p class="flash flash-error">${t('error.' + error)}</p>` : ''}
     ${LANGUAGES.map((l) => html`<option value="${l}" ${l === user.prefs.language ? 'selected' : ''}>${languageName(l)}</option>`)}
   </select></label>
   <label>${t('field.theme')}<select name="theme">
-    ${themes.map((th) => html`<option value="${th}" ${th === user.prefs.theme ? 'selected' : ''}>${t('theme.' + th)}</option>`)}
+    ${USER_THEMES.map((th) => html`<option value="${th}" ${th === user.prefs.theme ? 'selected' : ''}>${th === 'site'
+      ? t('theme.site', { theme: t('theme.' + page.branding.defaultTheme) }) : t('theme.' + th)}</option>`)}
   </select></label>
   <label class="check"><input type="checkbox" name="advancedMode" value="1" ${user.prefs.advancedMode ? 'checked' : ''}>
     <span><strong>${t('settings.advanced_mode')}</strong><br><small class="muted">${t('settings.advanced_mode_help')}</small></span></label>
@@ -129,7 +129,7 @@ export function registerSettingsRoutes(app: Hono<AppEnv>, svc: Services): void {
       const updated = await svc.users.updateProfile(user.id, {
         name: f.name,
         handle: f.handle,
-        prefs: { language: f.language, theme: f.theme as Theme, advancedMode: f.advancedMode === '1' },
+        prefs: { language: f.language, theme: f.theme as UserTheme, advancedMode: f.advancedMode === '1' },
       });
       setCookie(c, LANG_COOKIE, updated.prefs.language, { path: '/', sameSite: 'Lax', secure: isSecure(svc), maxAge: 365 * 86400 });
     } catch (err) {

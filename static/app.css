@@ -146,7 +146,21 @@ input[type=text], input[type=email], input[type=file], select, textarea {
   padding: 0.45rem 0.6rem;
   width: 100%;
 }
-input[type=color] { width: 4rem; height: 2.2rem; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: none; }
+.color-field { display: flex; gap: 0.4rem; align-items: stretch; }
+.color-field input { flex: 1; min-width: 0; }
+.color-button { width: 2.6rem; flex: none; padding: 0; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+.color-dialog {
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 1rem 1.2rem; width: min(22rem, calc(100vw - 2rem));
+}
+.color-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+.color-dialog h2 { margin: 0; font-size: 1.1em; }
+.color-preview { height: 3rem; border: 1px solid var(--border); border-radius: 6px; }
+.color-presets { display: grid; grid-template-columns: repeat(8, 1fr); gap: 0.35rem; }
+.color-swatch { aspect-ratio: 1; padding: 0; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
+.color-swatch:focus-visible, .color-button:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.color-dialog input[type=range] { width: 100%; accent-color: var(--brand); }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--brand); outline-offset: 1px; }
 textarea { resize: vertical; min-height: 10rem; line-height: 1.5; }
 input:disabled { opacity: 0.7; }

@@ -1,6 +1,7 @@
 import type { Page } from '../http/app.ts';
 import { LANGUAGES, languageName } from '../i18n/index.ts';
 import { html, raw, type Html } from './html.ts';
+import { staticUrl } from '../http/static.ts';
 
 export function csrfField(page: Page): Html {
   return html`<input type="hidden" name="_csrf" value="${page.csrf}">`;
@@ -27,7 +28,7 @@ function header(page: Page): Html {
   const { t, user, branding } = page;
   const logo = branding.hasLogo
     ? html`<img src="/branding/logo" alt="" class="logo">`
-    : html`<img src="/static/favicon.svg" alt="" class="logo">`;
+    : html`<img src="${staticUrl('favicon.svg')}" alt="" class="logo">`;
   return html`<header class="topbar">
   <a class="brand" href="/">${logo}<span>${branding.siteName}</span></a>
   <nav class="mainnav">
@@ -64,10 +65,10 @@ export function layout(page: Page, title: string, body: Html): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${title ? `${title} - ${page.branding.siteName}` : page.branding.siteName}</title>
-<link rel="icon" href="${page.branding.hasLogo ? '/branding/logo' : '/static/favicon.svg'}">
-<link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="${page.branding.hasLogo ? '/branding/logo' : staticUrl('favicon.svg')}">
+<link rel="stylesheet" href="${staticUrl('app.css')}">
 <link rel="stylesheet" href="/branding/theme.css">
-<script src="/static/app.js" defer></script>
+<script src="${staticUrl('app.js')}" defer></script>
 </head>
 <body>
 ${header(page)}

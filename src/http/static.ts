@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import type { Hono } from 'hono';
 import type { AppEnv, Services } from './app.ts';
@@ -18,6 +19,19 @@ function staticFile(name: string): Uint8Array {
     cache.set(name, data);
   }
   return data;
+}
+
+const versions = new Map<string, string>();
+
+// URL of a static file with a content hash, so that browsers fetch the
+// new file right after a deployment instead of using a cached copy.
+export function staticUrl(name: string): string {
+  let v = versions.get(name);
+  if (!v) {
+    v = createHash('sha256').update(staticFile(name)).digest('hex').slice(0, 12);
+    versions.set(name, v);
+  }
+  return `/static/${name}?v=${v}`;
 }
 
 // CSS variables derived from the branding settings, followed by the

@@ -20,6 +20,10 @@ export const SCHEMA_VERSION = 1;
 
 export type Language = string;
 export type Theme = 'auto' | 'light' | 'dark';
+// A user's appearance choice: 'site' follows the administrator's
+// default theme, 'auto' follows the browser/system setting.
+export type UserTheme = Theme | 'site';
+export const USER_THEMES: readonly UserTheme[] = ['site', 'auto', 'light', 'dark'];
 
 export interface Identity {
   provider: string;
@@ -38,7 +42,7 @@ export interface SshKey {
 export interface UserPrefs {
   language: Language;
   advancedMode: boolean;
-  theme: Theme;
+  theme: UserTheme;
 }
 
 export interface User {
