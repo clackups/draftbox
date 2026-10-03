@@ -4,7 +4,7 @@
   "description": "Git hosting for non-technical users",
   "private": true,
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "engines": {
     "node": ">=22.18"
   },

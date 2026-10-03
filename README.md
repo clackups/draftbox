@@ -118,3 +118,9 @@ Development
     npm test             # unit, web flow and Git-over-HTTP tests
     npm run typecheck
     npm run check-ascii  # code must be ASCII only (see AGENTS.md)
+
+License
+-------
+
+Draftbox is licensed under the Apache License, Version 2.0; see
+`LICENSE`.
