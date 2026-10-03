@@ -53,7 +53,28 @@ async function getJson(url: string, accessToken: string): Promise<unknown> {
   return res.json();
 }
 
+// Decodes the claims of an ID token received directly from the token
+// endpoint over TLS; per OIDC Core 3.1.3.7 the TLS server validation may
+// be used instead of checking the signature, but issuer and audience are
+// still verified.
+export function idTokenClaims(idToken: string, clientId: string, issuer?: string): Record<string, unknown> {
+  let claims: Record<string, unknown>;
+  try {
+    claims = JSON.parse(Buffer.from(idToken.split('.')[1] ?? '', 'base64url').toString('utf8')) as Record<string, unknown>;
+  } catch {
+    throw new OAuthError('malformed ID token');
+  }
+  if (typeof claims !== 'object' || claims === null) throw new OAuthError('malformed ID token');
+  const aud = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+  if (!aud.includes(clientId)) throw new OAuthError('ID token audience mismatch');
+  const strip = (u: unknown): string => String(u).replace(/\/+$/, '');
+  if (issuer !== undefined && strip(claims.iss) !== strip(issuer)) throw new OAuthError('ID token issuer mismatch');
+  if (typeof claims.exp === 'number' && claims.exp * 1000 < Date.now()) throw new OAuthError('ID token expired');
+  return claims;
+}
+
 interface OidcEndpoints {
+  issuer?: string;
   authorization_endpoint: string;
   token_endpoint: string;
   userinfo_endpoint: string;
@@ -119,7 +140,14 @@ class OidcProvider implements OAuthProvider {
     });
     const info = (await getJson(ep.userinfo_endpoint, String(tok.access_token))) as Record<string, unknown>;
     if (typeof info.sub !== 'string' || typeof info.email !== 'string') throw new OAuthError('incomplete profile');
-    if (info.email_verified !== true && info.email_verified !== 'true') throw new OAuthError('email not verified');
+    // Some providers (Gitea, Forgejo, e.g. Codeberg) put email_verified only
+    // into the ID token, not into the userinfo response.
+    let verified = info.email_verified;
+    if (verified === undefined && typeof tok.id_token === 'string') {
+      const claims = idTokenClaims(tok.id_token, this.client.clientId, ep.issuer);
+      if (claims.sub === info.sub && claims.email === info.email) verified = claims.email_verified;
+    }
+    if (verified !== true && verified !== 'true') throw new OAuthError('email not verified');
     return { subject: info.sub, email: info.email, name: typeof info.name === 'string' ? info.name : '' };
   }
 }

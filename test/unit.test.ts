@@ -9,6 +9,7 @@ import { validFilePath, validRefName, validRepoName } from '../src/services/repo
 import { negotiateLanguage, translator } from '../src/i18n/index.ts';
 import { sign, unsign } from '../src/auth/session.ts';
 import { isValidEmail, normalizeDescription, normalizeHomepage } from '../src/services/users.ts';
+import { idTokenClaims } from '../src/auth/oauth.ts';
 
 test('diffLines finds insertions and deletions', () => {
   const ops = diffLines('a\nb\nc\n', 'a\nB\nc\nd\n')!;
@@ -106,4 +107,15 @@ test('profile field validation', () => {
   assert.ok(!isValidEmail('no-at-sign'));
   assert.ok(!isValidEmail('a@b'));
   assert.ok(!isValidEmail('a b@example.com'));
+});
+
+test('ID token claims are checked for audience and issuer', () => {
+  const enc = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const tok = (c: object) => `${enc({ alg: 'RS256' })}.${enc(c)}.sig`;
+  const good = { iss: 'https://codeberg.org', aud: 'cid', sub: '42', email: 'a@b.c', email_verified: true };
+  assert.equal(idTokenClaims(tok(good), 'cid', 'https://codeberg.org/').email_verified, true);
+  assert.throws(() => idTokenClaims(tok({ ...good, aud: 'other' }), 'cid', 'https://codeberg.org'));
+  assert.throws(() => idTokenClaims(tok({ ...good, iss: 'https://evil' }), 'cid', 'https://codeberg.org'));
+  assert.throws(() => idTokenClaims(tok({ ...good, exp: 1 }), 'cid'));
+  assert.throws(() => idTokenClaims('garbage', 'cid'));
 });
