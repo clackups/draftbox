@@ -1,6 +1,6 @@
 import type { Page } from '../http/app.ts';
 import { LANGUAGES, languageName } from '../i18n/index.ts';
-import { html, raw, type Html } from './html.ts';
+import { escapeHtml, html, raw, type Html } from './html.ts';
 import { staticUrl } from '../http/static.ts';
 
 export function csrfField(page: Page): Html {
@@ -16,9 +16,15 @@ export function formatDate(page: Page, iso: string | number | null | undefined):
 
 // A timestamp that app.js re-renders in the browser's local timezone;
 // the server-formatted text remains as the no-JavaScript fallback.
-export function localTime(page: Page, unix: number): Html {
-  const iso = new Date(unix * 1000).toISOString();
-  return html`<time datetime="${iso}" data-localtime>${formatDate(page, unix)}</time>`;
+// 'full' adds seconds and the zone name, 'date' shows the day only.
+export type TimeStyle = 'datetime' | 'full' | 'date';
+
+export function localTime(page: Page, value: string | number | null | undefined, style: TimeStyle = 'datetime'): Html | string {
+  if (value === null || value === undefined || value === '') return '';
+  const d = typeof value === 'number' ? new Date(value * 1000) : new Date(value);
+  if (isNaN(d.getTime())) return '';
+  const text = style === 'date' ? formatDay(page, d.toISOString()) : formatDate(page, d.toISOString());
+  return html`<time datetime="${d.toISOString()}" data-localtime="${style}">${text}</time>`;
 }
 
 export function formatDay(page: Page, iso: string | null | undefined): string {
@@ -27,8 +33,15 @@ export function formatDay(page: Page, iso: string | null | undefined): string {
   return new Date(iso).toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-export function formDayOrNever(page: Page, iso: string | null): string {
-  return iso ? formatDay(page, iso) : page.t('tokens.never');
+export function formDayOrNever(page: Page, iso: string | null): Html | string {
+  return iso ? localTime(page, iso, 'date') : page.t('tokens.never');
+}
+
+// Translates a message whose parameters are HTML fragments (such as
+// localTime); the message text itself is escaped.
+export function tHtml(page: Page, key: string, params: Record<string, Html | string>): Html {
+  const parts = page.t(key).split(/\{(\w+)\}/);
+  return raw(parts.map((p, i) => (i % 2 === 0 ? escapeHtml(p) : p in params ? html`${params[p]}`.value : escapeHtml(`{${p}}`))).join(''));
 }
 
 function header(page: Page): Html {

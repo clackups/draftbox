@@ -7,7 +7,7 @@ import { VALIDITY_MONTHS, OTP_LIFETIME_DAYS, isExpired, type IssuedToken } from 
 import { type AccessToken, type Repo, type User, type UserTheme, contactEmailOf, USER_THEMES } from '../db/models.ts';
 import { MAX_DESCRIPTION, isValidEmail } from '../services/users.ts';
 import { html, type Html } from '../views/html.ts';
-import { csrfField, formDayOrNever, formatDate, layout } from '../views/layout.ts';
+import { csrfField, formDayOrNever, layout, localTime, tHtml } from '../views/layout.ts';
 import { ServiceError } from '../services/context.ts';
 
 function settingsNav(page: Page, active: string): Html {
@@ -93,10 +93,10 @@ ${tokens.length === 0 ? html`<p class="muted">${t('tokens.none')}</p>` : html`<d
   <thead><tr><th>${t('field.name')}</th><th>${t('tokens.scope')}</th><th>${t('tokens.access')}</th><th>${t('tokens.created')}</th><th>${t('tokens.expires')}</th><th></th></tr></thead>
   <tbody>${tokens.map((tok) => html`<tr class="${isExpired(tok, now) ? 'expired' : ''}">
     <td><strong>${tok.name}</strong>
-      ${tok.otp && Date.parse(tok.otp.expiresAt) > now ? html`<br><span class="badge">${t('tokens.otp_pending', { date: formatDate(page, tok.otp.expiresAt) })}</span>` : ''}</td>
+      ${tok.otp && Date.parse(tok.otp.expiresAt) > now ? html`<br><span class="badge">${tHtml(page, 'tokens.otp_pending', { date: localTime(page, tok.otp.expiresAt) })}</span>` : ''}</td>
     <td>${tokenScope(page, tok, repoMap)}</td>
     <td>${tok.access === 'write' ? t('tokens.read_write') : t('tokens.read_only')}</td>
-    <td>${formatDate(page, tok.createdAt)}</td>
+    <td>${localTime(page, tok.createdAt)}</td>
     <td>${isExpired(tok, now) ? html`<span class="badge badge-warn">${t('tokens.expired')}</span>` : formDayOrNever(page, tok.expiresAt)}</td>
     <td class="actions">
       ${isExpired(tok, now) ? '' : html`<form method="post" action="/settings/tokens/${tok.id}/otp" class="inline"${otpConfirm(page, tok, now)}>${csrfField(page)}<button class="btn btn-small btn-secondary">${t('tokens.new_otp')}</button></form>`}
@@ -150,7 +150,7 @@ function issuedPage(page: Page, svc: Services, user: User, issued: IssuedToken, 
   ${issued.otp ? html`<div class="otp-box">
     <p>${t('tokens.otp_is')}</p>
     <p class="otp">${issued.otp.slice(0, 4)} ${issued.otp.slice(4)}</p>
-    <p class="muted">${t('tokens.otp_explain', { date: formatDate(page, issued.token.otp?.expiresAt) })}</p>
+    <p class="muted">${tHtml(page, 'tokens.otp_explain', { date: localTime(page, issued.token.otp?.expiresAt) })}</p>
     ${advanced ? html`<pre class="mono">curl -X POST -H 'Content-Type: application/json' \\
   -d '{"password":"${issued.otp}"}' ${base}/api/v1/token-exchange</pre>` : ''}
   </div>` : ''}

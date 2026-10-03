@@ -2,7 +2,7 @@ import type { Hono } from 'hono';
 import { type AppEnv, type Page, type Services, formFields, requireAdmin, setFlash } from './app.ts';
 import type { Branding, Invitation, Preregistration, Theme, User } from '../db/models.ts';
 import { html, type Html } from '../views/html.ts';
-import { csrfField, formDayOrNever, formatDate, formatDay, layout } from '../views/layout.ts';
+import { csrfField, formDayOrNever, layout, localTime } from '../views/layout.ts';
 import { MAX_LOGO_BYTES } from '../services/admin.ts';
 import { ServiceError } from '../services/context.ts';
 
@@ -29,7 +29,7 @@ function usersPage(page: Page, svc: Services, users: Array<{ user: User; repos: 
 <thead><tr><th>${t('field.email')}</th><th>${t('field.handle')}</th><th>${t('field.name')}</th><th>${t('admin.registered')}</th><th>${t('admin.repos')}</th><th>${t('admin.status')}</th><th></th></tr></thead>
 <tbody>${users.map(({ user: u, repos }) => html`<tr class="${u.blocked ? 'blocked' : ''}">
   <td>${u.email}</td><td><a href="/${u.handle}">${u.handle}</a></td><td>${u.name}</td>
-  <td>${formatDay(page, u.createdAt)}</td><td>${repos}</td>
+  <td>${localTime(page, u.createdAt, 'date')}</td><td>${repos}</td>
   <td>${u.blocked ? html`<span class="badge badge-warn">${t('admin.blocked')}</span>` : html`<span class="badge">${t('admin.active')}</span>`}</td>
   <td class="actions">${u.id === page.user?.id ? html`<span class="muted">${t('admin.you')}</span>` : html`
     <form method="post" action="/admin/users/${u.id}/${u.blocked ? 'unblock' : 'block'}" class="inline">${csrfField(page)}
@@ -61,7 +61,7 @@ ${newLink ? html`<section class="card highlight"><p>${t('admin.invite_created')}
 </form></section>
 <section class="card"><div class="table-wrap"><table>
 <thead><tr><th>${t('admin.note')}</th><th>${t('tokens.created')}</th><th>${t('tokens.expires')}</th><th>${t('admin.status')}</th><th></th></tr></thead>
-<tbody>${invites.map((inv) => html`<tr><td>${inv.note}</td><td>${formatDate(page, inv.createdAt)}</td>
+<tbody>${invites.map((inv) => html`<tr><td>${inv.note}</td><td>${localTime(page, inv.createdAt)}</td>
   <td>${formDayOrNever(page, inv.expiresAt)}</td><td>${status(inv)}</td>
   <td class="actions"><form method="post" action="/admin/invitations/${inv.id}/revoke" class="inline">${csrfField(page)}
     <button class="btn btn-small btn-danger">${t('action.delete')}</button></form></td></tr>`)}</tbody></table></div></section>`);
@@ -78,7 +78,7 @@ ${svc.ctx.config.registration.preregistration ? '' : html`<p class="warning">${t
   <button class="btn">${t('action.add')}</button></form></section>
 <section class="card"><div class="table-wrap"><table>
 <thead><tr><th>${t('field.email')}</th><th>${t('admin.note')}</th><th>${t('tokens.created')}</th><th></th></tr></thead>
-<tbody>${list.map((p) => html`<tr><td>${p.email}</td><td>${p.note}</td><td>${formatDate(page, p.createdAt)}</td>
+<tbody>${list.map((p) => html`<tr><td>${p.email}</td><td>${p.note}</td><td>${localTime(page, p.createdAt)}</td>
   <td class="actions"><form method="post" action="/admin/preregistrations/remove" class="inline">${csrfField(page)}
     <input type="hidden" name="email" value="${p.email}"><button class="btn btn-small btn-danger">${t('action.delete')}</button></form></td></tr>`)}</tbody>
 </table></div></section>`);

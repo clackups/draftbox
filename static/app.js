@@ -9,10 +9,17 @@
     var d = new Date(el.getAttribute('datetime'));
     if (isNaN(d.getTime())) return;
     try {
-      el.textContent = d.toLocaleString(locale, {
-        year: 'numeric', month: 'short', day: 'numeric',
-        hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short'
-      });
+      var style = el.getAttribute('data-localtime');
+      var opts = { year: 'numeric', month: 'short', day: 'numeric' };
+      if (style !== 'date') {
+        opts.hour = '2-digit';
+        opts.minute = '2-digit';
+      }
+      if (style === 'full') {
+        opts.second = '2-digit';
+        opts.timeZoneName = 'short';
+      }
+      el.textContent = d.toLocaleString(locale, opts);
       el.title = d.toISOString();
     } catch (e) { /* keep the server-rendered text */ }
   });

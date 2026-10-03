@@ -3,7 +3,7 @@ import { type Repo, type User, contactEmailOf } from '../db/models.ts';
 import type { CommitInfo, GitRepo, RefInfo, TreeEntry } from '../git/types.ts';
 import type { Hunk } from '../util/diff.ts';
 import { html, raw, urlPath, type Html } from './html.ts';
-import { csrfField, formatDate, formatDay, layout, localTime } from './layout.ts';
+import { csrfField, layout, localTime, tHtml } from './layout.ts';
 import { DEFAULT_BRANCH } from '../services/repos.ts';
 
 export interface RepoCtx {
@@ -109,7 +109,7 @@ export function treePage(rc: RepoCtx, path: string, entries: TreeEntry[], readme
   ${cloneBox(rc)}
 </div>
 ${head ? html`<div class="lastcommit"><a href="${repoUrl(rc, 'commit', head.oid)}" class="mono">${head.oid.slice(0, 8)}</a>
-  ${firstLine(head.message)} <span class="muted">&middot; ${head.author.name} &middot; ${formatDate(rc.page, head.author.time)}</span></div>` : ''}
+  ${firstLine(head.message)} <span class="muted">&middot; ${head.author.name} &middot; ${localTime(rc.page, head.author.time)}</span></div>` : ''}
 <div class="card flush"><table class="files">
   ${path ? html`<tr><td colspan="2"><a href="${withRef(rc, path.includes('/') ? repoUrl(rc, 'tree', path.slice(0, path.lastIndexOf('/'))) : repoUrl(rc))}">..</a></td></tr>` : ''}
   ${entries.map((e) => html`<tr>
@@ -238,7 +238,7 @@ export function commitsPage(rc: RepoCtx, commits: CommitInfo[], pageNo: number, 
 ${commits.length === 0 ? html`<p class="muted">${t('repo.no_commits')}</p>` : html`<div class="card flush"><table class="commits">
 ${commits.map((c) => html`<tr>
   <td><a href="${repoUrl(rc, 'commit', c.oid)}">${firstLine(c.message)}</a><br>
-    <span class="muted small">${c.author.name} &middot; ${formatDate(rc.page, c.author.time)}</span></td>
+    <span class="muted small">${c.author.name} &middot; ${localTime(rc.page, c.author.time)}</span></td>
   <td class="mono right"><a href="${repoUrl(rc, 'commit', c.oid)}">${c.oid.slice(0, 8)}</a></td>
   <td class="right"><a class="btn btn-small btn-secondary" href="${repoUrl(rc, 'tree') + '?ref=' + c.oid}">${t('repo.browse')}</a></td>
 </tr>`)}
@@ -263,7 +263,7 @@ export function commitPage(rc: RepoCtx, c: CommitInfo, changes: FileChange[]): s
 <section class="card">
   <h2>${subject}</h2>
   ${body.join('\n').trim() ? html`<pre class="commitmsg">${body.join('\n').trim()}</pre>` : ''}
-  <p class="muted">${c.author.name} &lt;${c.author.email}&gt; &middot; ${localTime(rc.page, c.author.time)}</p>
+  <p class="muted">${c.author.name} &lt;${c.author.email}&gt; &middot; ${localTime(rc.page, c.author.time, 'full')}</p>
   <p class="mono small">${t('repo.commit')} ${c.oid}
     ${c.parents.map((p) => html` &middot; ${t('repo.parent')} <a href="${repoUrl(rc, 'commit', p)}">${p.slice(0, 8)}</a>`)}</p>
   <p><a class="btn btn-small btn-secondary" href="${repoUrl(rc, 'tree') + '?ref=' + c.oid}">${t('repo.browse_at_commit')}</a></p>
@@ -309,7 +309,7 @@ ${rc.isOwner ? html`<section class="card"><h2>${t('repo.tag_create')}</h2>
 <div class="card flush">${tags.length === 0 ? html`<p class="muted pad">${t('repo.no_tags')}</p>` : html`<table>
 ${tags.map((tag) => html`<tr>
   <td><a href="${repoUrl(rc, 'tree') + '?ref=' + encodeURIComponent(tag.name)}"><strong class="mono">${tag.name}</strong></a></td>
-  <td>${tag.commit ? html`<a href="${repoUrl(rc, 'commit', tag.commit.oid)}">${firstLine(tag.commit.message)}</a><br><span class="muted small">${formatDay(rc.page, new Date(tag.commit.author.time * 1000).toISOString())}</span>` : ''}</td>
+  <td>${tag.commit ? html`<a href="${repoUrl(rc, 'commit', tag.commit.oid)}">${firstLine(tag.commit.message)}</a><br><span class="muted small">${localTime(rc.page, tag.commit.author.time, 'date')}</span>` : ''}</td>
   <td class="actions">${rc.isOwner ? html`<form method="post" action="${repoUrl(rc, 'tags', 'delete')}" class="inline" data-confirm="${t('repo.tag_delete_confirm', { name: tag.name })}">
     ${csrfField(rc.page)}<input type="hidden" name="name" value="${tag.name}"><button class="btn btn-small btn-danger">${t('action.delete')}</button></form>` : ''}</td>
 </tr>`)}</table>`}</div>`);
@@ -330,7 +330,7 @@ ${rc.isOwner ? html`<section class="card"><h2>${t('repo.branch_create')}</h2>
 ${rows.map((r) => html`<tr>
   <td><a href="${repoUrl(rc) + '?ref=' + encodeURIComponent(r.name)}"><strong class="mono">${r.name}</strong></a>
     ${r.name === DEFAULT_BRANCH ? html` <span class="badge">${t('repo.default_branch')}</span>` : ''}</td>
-  <td>${r.commit ? html`${firstLine(r.commit.message)}<br><span class="muted small">${formatDate(rc.page, r.commit.author.time)}</span>` : ''}</td>
+  <td>${r.commit ? html`${firstLine(r.commit.message)}<br><span class="muted small">${localTime(rc.page, r.commit.author.time)}</span>` : ''}</td>
   <td class="actions">${rc.isOwner && r.name !== DEFAULT_BRANCH ? html`<form method="post" action="${repoUrl(rc, 'branches', 'delete')}" class="inline" data-confirm="${t('repo.branch_delete_confirm', { name: r.name })}">
     ${csrfField(rc.page)}<input type="hidden" name="name" value="${r.name}"><button class="btn btn-small btn-danger">${t('action.delete')}</button></form>` : ''}</td>
 </tr>`)}
@@ -391,7 +391,7 @@ export function repoList(page: Page, items: Array<{ repo: Repo; owner: User }>, 
   return html`<ul class="repolist">${items.map(({ repo, owner }) => html`<li class="card">
     <a href="${urlPath(owner.handle, repo.name)}"><strong>${showOwner ? `${owner.handle} / ` : ''}${repo.name}</strong></a> ${visibilityBadge(page, repo)}
     ${repo.description ? html`<p class="muted">${repo.description}</p>` : ''}
-    <p class="muted small">${t('repo.created_on', { date: formatDay(page, repo.createdAt) })}</p>
+    <p class="muted small">${tHtml(page, 'repo.created_on', { date: localTime(page, repo.createdAt, 'date') })}</p>
   </li>`)}</ul>`;
 }
 
