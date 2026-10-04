@@ -3,7 +3,7 @@ import { type AppEnv, type Page, type Services, formFields, requireAdmin, setFla
 import type { Branding, Invitation, LimitGrant, Preregistration, Theme, User } from '../db/models.ts';
 import { html, type Html } from '../views/html.ts';
 import { csrfField, formDayOrNever, layout, localTime, storageUsage } from '../views/layout.ts';
-import { MAX_LOGO_BYTES } from '../services/admin.ts';
+import { MAX_FOOTER, MAX_LOGO_BYTES } from '../services/admin.ts';
 import { parseLimitGrant, parseQuotaUpdate, parseUntilUpdate, type LimitStatus } from '../services/limits.ts';
 import { ServiceError } from '../services/context.ts';
 
@@ -199,7 +199,8 @@ function brandingPage(page: Page, b: Branding): string {
     <label>${t('admin.default_theme')}<select name="defaultTheme">
       ${themes.map((th) => html`<option value="${th}" ${th === b.defaultTheme ? 'selected' : ''}>${t('theme.' + th)}</option>`)}</select></label>
   </div>
-  <label>${t('admin.footer_text')}<input type="text" name="footerText" value="${b.footerText}" maxlength="300"></label>
+  <label>${t('admin.footer_text')}<textarea name="footerText" rows="3" class="mono" maxlength="${MAX_FOOTER}">${b.footerText}</textarea>
+    <small class="muted">${t('admin.footer_text_help')}</small></label>
   <label>${t('admin.custom_css')}<textarea name="customCss" rows="8" class="mono">${b.customCss}</textarea>
     <small class="muted">${t('admin.custom_css_help')}</small></label>
   <div><button class="btn">${t('action.save')}</button></div>

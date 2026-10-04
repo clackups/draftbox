@@ -169,6 +169,7 @@ export interface Branding {
   customCss: string;
   hasLogo: boolean;
   logoType?: string;
+  // HTML, restricted by util/sanitize.ts.
   footerText: string;
 }
 

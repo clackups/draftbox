@@ -538,12 +538,14 @@ test('branding and language selection', async () => {
   await admin.get('/admin/branding');
   await admin.post('/admin/branding', {
     siteName: 'Writers Hub', primaryColor: '#112233', accentColor: '#445566', lightBackground: '#fafafa', darkBackground: '#101010', lightPanel: '#fefefe', darkPanel: '#202020',
-    defaultTheme: 'dark', footerText: 'Hello', customCss: 'body{x:y}</style><script>',
+    defaultTheme: 'dark', footerText: 'Hello <a href="https://example.org/" onclick="x()">site</a><script>bad()</script>', customCss: 'body{x:y}</style><script>',
   });
   const anon = new Browser(env);
   const page = await anon.get('/');
   assert.match(page.text, /Writers Hub/);
   assert.match(page.text, /data-theme="dark"/);
+  assert.match(page.text, /<div class="footer-text">Hello <a href="https:\/\/example\.org\/">site<\/a><\/div>/);
+  assert.doesNotMatch(page.text, /bad\(\)/);
   const css = await anon.get('/branding/theme.css');
   assert.match(css.text, /--brand:#112233/);
   assert.match(css.text, /:root\{[^}]*--bg:#fafafa/);

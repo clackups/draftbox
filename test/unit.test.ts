@@ -10,6 +10,7 @@ import { negotiateLanguage, translator } from '../src/i18n/index.ts';
 import { sign, unsign } from '../src/auth/session.ts';
 import { isValidEmail, normalizeDescription, normalizeHomepage } from '../src/services/users.ts';
 import { idTokenClaims } from '../src/auth/oauth.ts';
+import { sanitizeHtml } from '../src/util/sanitize.ts';
 
 test('diffLines finds insertions and deletions', () => {
   const ops = diffLines('a\nb\nc\n', 'a\nB\nc\nd\n')!;
@@ -118,4 +119,23 @@ test('ID token claims are checked for audience and issuer', () => {
   assert.throws(() => idTokenClaims(tok({ ...good, iss: 'https://evil' }), 'cid', 'https://codeberg.org'));
   assert.throws(() => idTokenClaims(tok({ ...good, exp: 1 }), 'cid'));
   assert.throws(() => idTokenClaims('garbage', 'cid'));
+});
+
+test('footer HTML sanitizer keeps safe markup only', () => {
+  assert.equal(sanitizeHtml('&copy; 2026 <b>Acme</b> & co<br>'), '&copy; 2026 <b>Acme</b> &amp; co<br>');
+  assert.equal(sanitizeHtml('<a href="https://x.example/" target="_blank" onclick="evil()">x</a>'),
+    '<a href="https://x.example/" target="_blank" rel="noopener noreferrer">x</a>');
+  assert.equal(sanitizeHtml('<a href="javascript:alert(1)">x</a>'), '<a>x</a>');
+  assert.equal(sanitizeHtml('<a href="/a?x=1&amp;y=2">x</a>'), '<a href="/a?x=1&amp;y=2">x</a>');
+  assert.equal(sanitizeHtml('<a href="jav&#x61;script:alert(1)">x</a>'), '<a>x</a>');
+  assert.equal(sanitizeHtml('<img src="/branding/logo" alt="l" onerror="x()">'), '<img src="/branding/logo" alt="l">');
+  assert.equal(sanitizeHtml('a<script>alert(1)</script>b<style>p{}</style>c'), 'abc');
+  assert.equal(sanitizeHtml('<iframe src="https://x"></iframe><form><input>ok</form>'), 'ok');
+  assert.equal(sanitizeHtml('<span style="color:red">r</span><span style="background:url(x)">u</span>'),
+    '<span style="color:red">r</span><span>u</span>');
+  // Unbalanced markup cannot break the page.
+  assert.equal(sanitizeHtml('<b><i>x</b> y</i> </div>'), '<b><i>x</i></b> y ');
+  assert.equal(sanitizeHtml('<span>open'), '<span>open</span>');
+  assert.equal(sanitizeHtml('1 < 2 <!-- c --> "q"'), '1 &lt; 2  "q"');
+  assert.equal(sanitizeHtml('<a title="a&quot;b" href=\'/p?x=1&y=2\'>t</a>'), '<a title="a&quot;b" href="/p?x=1&amp;y=2">t</a>');
 });

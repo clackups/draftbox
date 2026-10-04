@@ -3,6 +3,7 @@ import { LANGUAGES, languageName } from '../i18n/index.ts';
 import { escapeHtml, html, raw, type Html } from './html.ts';
 import { staticUrl } from '../http/static.ts';
 import type { LimitStatus } from '../services/limits.ts';
+import { sanitizeHtml } from '../util/sanitize.ts';
 
 export function csrfField(page: Page): Html {
   return html`<input type="hidden" name="_csrf" value="${page.csrf}">`;
@@ -76,7 +77,7 @@ function header(page: Page): Html {
 function footer(page: Page): Html {
   const next = encodeURIComponent(page.path);
   return html`<footer class="footer">
-  <div>${page.branding.footerText}</div>
+  <div class="footer-text">${raw(sanitizeHtml(page.branding.footerText))}</div>
   <div class="langs">${LANGUAGES.map((l) => l === page.lang
     ? html`<strong>${languageName(l)}</strong>`
     : html`<a href="/lang/${l}?next=${next}" hreflang="${l}">${languageName(l)}</a>`)}</div>

@@ -5,11 +5,13 @@ import { ServiceError } from './context.ts';
 import type { Branding, Invitation, LimitGrant, Preregistration, Theme } from '../db/models.ts';
 import { DEFAULT_BRANDING } from '../db/models.ts';
 import { randomId, randomSecret, sha256hex } from '../util/crypto.ts';
+import { sanitizeHtml } from '../util/sanitize.ts';
 import { emailKey, findUsableInvitation, normalizeEmail } from './users.ts';
 
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const LOGO_TYPES = new Set(['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp', 'image/gif']);
 export const MAX_LOGO_BYTES = 512 * 1024;
+export const MAX_FOOTER = 4000;
 
 export class InvitationService {
   private ctx: Context;
@@ -139,7 +141,7 @@ export class BrandingService {
         cur.defaultTheme = patch.defaultTheme;
       }
       if (patch.customCss !== undefined) cur.customCss = sanitizeCss(patch.customCss.slice(0, 20000));
-      if (patch.footerText !== undefined) cur.footerText = patch.footerText.trim().slice(0, 300);
+      if (patch.footerText !== undefined) cur.footerText = sanitizeHtml(patch.footerText.trim().slice(0, MAX_FOOTER));
       tx.put('settings/branding.json', cur);
       return cur;
     });
