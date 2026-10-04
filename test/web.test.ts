@@ -1,6 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { ADMIN_EMAIL, Browser, adminApi, setup, type TestEnv } from './helpers.ts';
+import { DEFAULT_BRANDING } from '../src/db/models.ts';
 
 let env: TestEnv;
 
@@ -558,6 +559,31 @@ test('branding and language selection', async () => {
   assert.match((await anon.get('/')).text, /Anmelden/);
   const uk = new Browser(env);
   assert.match((await uk.get('/', { 'Accept-Language': 'uk-UA,uk;q=0.9' })).text, /lang="uk"/);
+});
+
+test('branding can be reset to the defaults', async () => {
+  const admin = new Browser(env);
+  await admin.login(ADMIN_EMAIL);
+  await admin.get('/admin/branding');
+  await admin.post('/admin/branding', {
+    siteName: 'Custom', primaryColor: '#123456', accentColor: '#654321', lightBackground: '#eeeeee', darkBackground: '#111111',
+    lightPanel: '#dddddd', darkPanel: '#222222', defaultTheme: 'dark', footerText: 'Foot', customCss: 'p{}',
+  });
+  const logo = new FormData();
+  logo.set('logo', new File(['<svg xmlns="http://www.w3.org/2000/svg"/>'], 'logo.svg', { type: 'image/svg+xml' }));
+  await admin.post('/admin/branding/logo', logo);
+  assert.equal((await env.svc.branding.get()).hasLogo, true);
+
+  assert.match((await admin.get('/admin/branding')).text, /action="\/admin\/branding\/reset" data-confirm=/);
+  const r = await admin.post('/admin/branding/reset', {});
+  assert.equal(r.res.status, 302);
+  assert.deepEqual(await env.svc.branding.get(), DEFAULT_BRANDING);
+  assert.equal(await env.svc.branding.logo(), null);
+  assert.equal((await env.app.request('/branding/logo')).status, 404);
+
+  const alice = new Browser(env);
+  await alice.login('alice@example.com');
+  assert.equal((await alice.post('/admin/branding/reset', {})).res.status, 403);
 });
 
 test('user appearance preference overrides the site default theme', async () => {

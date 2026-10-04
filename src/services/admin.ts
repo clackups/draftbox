@@ -167,6 +167,14 @@ export class BrandingService {
     });
   }
 
+  // Removes all customizations, including the logo.
+  async reset(actor: string): Promise<void> {
+    await this.ctx.store.transact(`Reset branding by ${actor}`, async (tx) => {
+      tx.delete('settings/branding.json');
+      tx.delete('settings/logo');
+    });
+  }
+
   async logo(): Promise<{ data: Uint8Array; type: string } | null> {
     const b = await this.get();
     if (!b.hasLogo || !b.logoType) return null;

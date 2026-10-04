@@ -213,6 +213,11 @@ ${colorDialog(page)}
     <button class="btn">${t('action.upload')}</button></form>
   <p class="muted">${t('admin.logo_help', { kb: MAX_LOGO_BYTES / 1024 })}</p>
   ${b.hasLogo ? html`<form method="post" action="/admin/branding/logo/remove">${csrfField(page)}<button class="btn btn-small btn-danger">${t('action.remove')}</button></form>` : ''}
+</section>
+<section class="card danger stack"><h2>${t('admin.branding_reset')}</h2>
+  <p class="muted">${t('admin.branding_reset_help')}</p>
+  <form method="post" action="/admin/branding/reset" data-confirm="${t('admin.branding_reset_confirm')}">${csrfField(page)}
+    <button class="btn btn-danger">${t('admin.branding_reset')}</button></form>
 </section>`);
 }
 
@@ -349,6 +354,13 @@ export function registerAdminRoutes(app: Hono<AppEnv>, svc: Services): void {
     if (!(file instanceof File)) throw new ServiceError('invalid_logo');
     await svc.branding.setLogo(new Uint8Array(await file.arrayBuffer()), file.type, admin.email);
     setFlash(c, 'ok', 'branding_saved');
+    return c.redirect('/admin/branding');
+  });
+
+  app.post('/admin/branding/reset', async (c) => {
+    const admin = requireAdmin(c);
+    await svc.branding.reset(admin.email);
+    setFlash(c, 'ok', 'branding_reset');
     return c.redirect('/admin/branding');
   });
 
