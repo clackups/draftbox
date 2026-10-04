@@ -27,7 +27,7 @@ export async function setup(overrides: Partial<Config> = {}): Promise<TestEnv> {
     sessionSecret: 'x'.repeat(40),
     encryptionKey: 'y'.repeat(40),
     oauth: { dev: { enabled: true } },
-    admins: { emails: [ADMIN_EMAIL], trustedProviders: ['dev'] },
+    admins: { emails: [ADMIN_EMAIL] },
     adminApiKeys: [ADMIN_API_KEY],
     registration: { open: false, invitations: true, preregistration: true },
     ...overrides,

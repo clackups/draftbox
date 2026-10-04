@@ -480,8 +480,7 @@ test('administrator accounts have no quota or time limit', async () => {
   const r = await admin.post(`/${user.handle}/admin-notes/new`, { ref: 'main', base: '', dir: '', name: 'a.md', content: 'a\n', message: '' });
   assert.equal(r.res.status, 302);
 
-  // The address alone is not enough: the identity must come from a trusted provider.
-  user = { ...user, identities: [{ provider: 'github', subject: 'x' }] };
+  user = { ...user, email: 'someone-else@example.com' };
   assert.equal(env.svc.limits.isAdminAccount(user), false);
   assert.equal(env.svc.limits.effective(user).storageQuotaMb, 0.0001);
 });

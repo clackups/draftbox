@@ -59,10 +59,10 @@ export interface Config {
     dev?: { enabled: boolean };
   };
 
+  // Administrator accounts. Every configured OAuth provider is trusted to
+  // assert the email address, so an address here is enough.
   admins: {
     emails: string[];
-    // Only logins through these providers grant administrator rights.
-    trustedProviders: string[];
   };
 
   // Bearer keys accepted by the administrative API (/api/admin/...).
@@ -98,7 +98,7 @@ const DEFAULTS: Config = {
   gitBinary: 'git',
   registration: { open: false, invitations: true, preregistration: true },
   oauth: {},
-  admins: { emails: [], trustedProviders: ['google', 'github'] },
+  admins: { emails: [] },
   adminApiKeys: [],
   mail: { transport: 'log', from: 'Draftbox <noreply@localhost>' },
   defaultLanguage: 'en',
@@ -146,6 +146,10 @@ export function finalizeConfig(partial: Partial<Config>, env: Record<string, str
 
   cfg.baseUrl = cfg.baseUrl.replace(/\/+$/, '');
   cfg.admins.emails = cfg.admins.emails.map((e) => e.trim().toLowerCase());
+  if ('trustedProviders' in cfg.admins) {
+    console.warn('admins.trustedProviders is no longer supported and is ignored: every OAuth provider is trusted');
+    delete (cfg.admins as { trustedProviders?: unknown }).trustedProviders;
+  }
 
   if (cfg.sessionSecret.length < 32) {
     throw new Error('sessionSecret must be at least 32 characters (set DRAFTBOX_SESSION_SECRET)');

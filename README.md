@@ -78,8 +78,24 @@ i.e. unlimited) of user accounts. Invitations and pre-registrations can
 grant other values. An account that exceeds its quota or time limit
 becomes read-only: its repositories can still be browsed and cloned,
 but new commits through the web editor or `git push` are refused.
-Administrator accounts (an address in `admins.emails` that has signed
-in through one of `admins.trustedProviders`) are never limited.
+Administrator accounts (addresses in `admins.emails`) are never
+limited.
+
+OAuth providers
+---------------
+
+Every configured OAuth provider is fully trusted. Draftbox identifies
+accounts by the email address a provider reports as verified: a login
+through any provider with the address of an existing account signs in
+to that account, and a login with an address listed in `admins.emails`
+gets administrator rights. A provider that lets its users claim or
+self-verify arbitrary addresses (for example, a public Gitea, Forgejo
+or Keycloak instance with open registration) therefore gives its users
+access to any Draftbox account, including administrator accounts.
+
+Only configure providers whose email verification you rely on, such as
+Google, GitHub or your organization's own single sign-on, and never
+enable the `dev` provider on a reachable server.
 
 Using Git
 ---------

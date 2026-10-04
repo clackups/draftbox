@@ -24,8 +24,7 @@
   },
 
   "admins": {
-    "emails": ["admin@example.com"],
-    "trustedProviders": ["google"]
+    "emails": ["admin@example.com"]
   },
 
   "mail": {

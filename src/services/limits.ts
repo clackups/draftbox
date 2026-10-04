@@ -116,9 +116,7 @@ export class LimitService {
   // that has signed in through a trusted provider. Unlike the session's
   // admin flag this also applies to Git access with tokens.
   isAdminAccount(user: User): boolean {
-    const admins = this.ctx.config.admins;
-    return admins.emails.includes(user.email)
-      && user.identities.some((i) => admins.trustedProviders.includes(i.provider));
+    return this.ctx.config.admins.emails.includes(user.email);
   }
 
   effective(user: User): UserLimits {

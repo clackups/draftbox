@@ -51,7 +51,7 @@ function sessionCookie(svc: Services, data: SessionData): string {
 async function completeLogin(c: Ctx, svc: Services, provider: string, profile: ProviderProfile, next: string): Promise<Response> {
   const cfg = svc.ctx.config;
   const email = profile.email.trim().toLowerCase();
-  const isAdmin = cfg.admins.emails.includes(email) && cfg.admins.trustedProviders.includes(provider);
+  const isAdmin = cfg.admins.emails.includes(email);
   const inviteCode = getCookie(c, INVITE_COOKIE);
   let user;
   try {
