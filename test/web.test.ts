@@ -410,6 +410,29 @@ test('an account over its limits is read-only in the web interface', async () =>
   assert.equal(r.res.status, 302);
 });
 
+test('download all returns a ZIP archive of the repository', async () => {
+  await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'zed@example.com' });
+  const zed = new Browser(env);
+  await zed.login('zed@example.com');
+  await zed.post('/new', { name: 'book', description: '', visibility: 'private' });
+  // Nothing to download from an empty repository.
+  assert.equal((await zed.get('/zed/book/archive.zip')).res.status, 404);
+  await zed.post('/zed/book/new', { ref: 'main', base: '', dir: '', name: 'ch1.md', content: '# One\n', message: '' });
+  const page = await zed.get('/zed/book');
+  assert.match(page.text, /href="\/zed\/book\/archive\.zip" download>Download all</);
+
+  const res = await zed.env.app.request('/zed/book/archive.zip', { headers: { Cookie: [...zed.cookies].map(([k, v]) => `${k}=${v}`).join('; ') } });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('Content-Type'), 'application/zip');
+  assert.equal(res.headers.get('Content-Disposition'), 'attachment; filename="book.zip"');
+  const data = Buffer.from(await res.arrayBuffer());
+  assert.equal(data.subarray(0, 4).toString('latin1'), 'PK\x03\x04');
+  assert.ok(data.includes('book/ch1.md'));
+
+  // Private repositories are not downloadable by others.
+  assert.equal((await env.app.request('/zed/book/archive.zip')).status, 404);
+});
+
 test('static files use the configured cache lifetime', async () => {
   const res = await env.app.request('/static/app.js');
   assert.equal(res.status, 200);

@@ -235,6 +235,23 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     return c.body(data as Uint8Array<ArrayBuffer>, 200, headers);
   });
 
+  app.get('/:owner/:repo/archive.zip', async (c) => {
+    const rc = await loadRepo(c, svc);
+    if (!rc.commitOid) return c.notFound();
+    // Repository names are limited to [A-Za-z0-9._-]; refs may hold slashes.
+    const suffix = rc.ref === DEFAULT_BRANCH ? '' : '-' + (rc.refKind === 'commit' ? rc.ref.slice(0, 10) : rc.ref.replace(/[^A-Za-z0-9._-]+/g, '-'));
+    const name = rc.repo.name + suffix;
+    return new Response(svc.repos.archive(rc.repo, rc.commitOid, name), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/zip',
+        'Content-Disposition': `attachment; filename="${name}.zip"`,
+        'Cache-Control': 'no-cache',
+        'X-Content-Type-Options': 'nosniff',
+      },
+    });
+  });
+
   // ---- Editing ------------------------------------------------------------
 
   app.get('/:owner/:repo/edit/*', async (c) => {

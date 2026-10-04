@@ -110,6 +110,7 @@ export function treePage(rc: RepoCtx, path: string, entries: TreeEntry[], readme
   ${canEdit(rc) ? html`
     <a class="btn btn-small" href="${withRef(rc, repoUrl(rc, 'new') + (path ? '?dir=' + encodeURIComponent(path) : ''))}">${t('repo.new_file')}</a>
     <a class="btn btn-small btn-secondary" href="${withRef(rc, repoUrl(rc, 'upload') + (path ? '?dir=' + encodeURIComponent(path) : ''))}">${t('repo.upload')}</a>` : ''}
+  <a class="btn btn-small btn-secondary" href="${withRef(rc, repoUrl(rc, 'archive.zip'))}" download>${t('repo.download_all')}</a>
   ${cloneBox(rc)}
 </div>
 ${head ? html`<div class="lastcommit"><a href="${repoUrl(rc, 'commit', head.oid)}" class="mono">${head.oid.slice(0, 8)}</a>

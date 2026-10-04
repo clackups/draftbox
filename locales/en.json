@@ -142,6 +142,7 @@
   "repo.branch": "Branch",
   "repo.new_file": "New file",
   "repo.upload": "Upload files",
+  "repo.download_all": "Download all",
   "repo.clone": "Git address",
   "repo.clone_help_public": "Anyone can download this repository with Git. To make changes, use an access token as the password.",
   "repo.clone_help_private": "Use an access token as the password.",

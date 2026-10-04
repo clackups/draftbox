@@ -1,4 +1,6 @@
+import { spawn } from 'node:child_process';
 import { rm } from 'node:fs/promises';
+import { Readable } from 'node:stream';
 import type { Context } from './context.ts';
 import { ServiceError } from './context.ts';
 import type { Repo, User, Visibility } from '../db/models.ts';
@@ -162,6 +164,18 @@ export class RepoService {
       if (commit) latest = Math.max(latest, commit.committer.time * 1000);
     }
     return latest;
+  }
+
+  // ZIP archive of the files at a commit, each under `prefix/`. libgit2
+  // has no archive support, so `git archive` produces it.
+  archive(repo: Repo, commitOid: string, prefix: string): ReadableStream<Uint8Array> {
+    if (!/^[0-9a-f]{40}$/.test(commitOid)) throw new ServiceError('not_found', 404);
+    const child = spawn(this.ctx.config.gitBinary, [
+      '--git-dir', this.ctx.repoPath(repo.id), 'archive', '--format=zip', `--prefix=${prefix}/`, commitOid,
+    ], { env: { PATH: process.env.PATH, GIT_CONFIG_NOSYSTEM: '1', HOME: '/nonexistent' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    child.stderr.on('data', (d: Buffer) => console.error(`[git archive] ${d.toString().trim()}`));
+    child.on('error', (err) => console.error(`[git archive] ${err.message}`));
+    return Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>;
   }
 
   // ---- Content operations -------------------------------------------------
