@@ -1,0 +1,124 @@
+// Storage quotas and time limits. An account that exceeds either becomes
+// read-only: no new commits through the web editor or Git pushes, while
+// reading and cloning keep working.
+
+import { readdir, stat } from 'node:fs/promises';
+import { join } from 'node:path';
+import type { Context } from './context.ts';
+import { ServiceError } from './context.ts';
+import type { LimitGrant, User } from '../db/models.ts';
+
+const MB = 1024 * 1024;
+// Largest accepted quota and time limit; keeps values sane.
+const MAX_QUOTA_MB = 10 * 1024 * 1024;
+const MAX_DAYS = 100 * 365;
+
+export interface UserLimits {
+  // null means unlimited.
+  storageQuotaMb: number | null;
+  writableUntil: string | null;
+}
+
+export interface LimitStatus extends UserLimits {
+  usedBytes: number;
+  // Why the account is read-only, as an error code; null if writable.
+  blockedBy: 'quota_exceeded' | 'time_limit_expired' | null;
+}
+
+// Validates a quota or time limit from a form or the API: undefined or
+// '' is the configured default, null or 0 is unlimited.
+export function parseLimit(value: unknown, max: number): number | null | undefined {
+  if (value === undefined || value === '') return undefined;
+  if (value === null) return null;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0 || n > max) throw new ServiceError('invalid_limit');
+  return n === 0 ? null : n;
+}
+
+export function parseLimitGrant(storageQuotaMb: unknown, timeLimitDays: unknown): LimitGrant {
+  const grant: LimitGrant = {};
+  const quota = parseLimit(storageQuotaMb, MAX_QUOTA_MB);
+  const days = parseLimit(timeLimitDays, MAX_DAYS);
+  if (quota !== undefined) grant.storageQuotaMb = quota;
+  if (days !== undefined) grant.timeLimitDays = days;
+  return grant;
+}
+
+async function dirSize(path: string): Promise<number> {
+  let total = 0;
+  let entries;
+  try {
+    entries = await readdir(path, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  for (const e of entries) {
+    const p = join(path, e.name);
+    if (e.isDirectory()) total += await dirSize(p);
+    else if (e.isFile()) total += (await stat(p).catch(() => null))?.size ?? 0;
+  }
+  return total;
+}
+
+export class LimitService {
+  private ctx: Context;
+
+  constructor(ctx: Context) {
+    this.ctx = ctx;
+  }
+
+  // Values stored in a new account: those of the grant, falling back to
+  // the configured defaults when the grant does not set them.
+  forNewUser(grant: LimitGrant | undefined, createdAt: string): Pick<User, 'storageQuotaMb' | 'writableUntil'> {
+    const out: Pick<User, 'storageQuotaMb' | 'writableUntil'> = {};
+    if (grant?.storageQuotaMb !== undefined) out.storageQuotaMb = grant.storageQuotaMb;
+    if (grant?.timeLimitDays !== undefined) {
+      out.writableUntil = grant.timeLimitDays === null
+        ? null
+        : new Date(Date.parse(createdAt) + grant.timeLimitDays * 86400_000).toISOString();
+    }
+    return out;
+  }
+
+  effective(user: User): UserLimits {
+    const defaults = this.ctx.config.limits;
+    let writableUntil: string | null;
+    if (user.writableUntil !== undefined) {
+      writableUntil = user.writableUntil;
+    } else {
+      writableUntil = defaults.timeLimitDays === null
+        ? null
+        : new Date(Date.parse(user.createdAt) + defaults.timeLimitDays * 86400_000).toISOString();
+    }
+    return {
+      storageQuotaMb: user.storageQuotaMb !== undefined ? user.storageQuotaMb : defaults.storageQuotaMb,
+      writableUntil,
+    };
+  }
+
+  // Disk space taken by all repositories of the user.
+  async usedBytes(userId: string): Promise<number> {
+    const view = this.ctx.store.view();
+    let total = 0;
+    for (const name of await view.list(`index/repo/${userId}`)) {
+      const id = await view.getText(`index/repo/${userId}/${name}`);
+      if (id) total += await dirSize(this.ctx.repoPath(id));
+    }
+    return total;
+  }
+
+  async status(user: User): Promise<LimitStatus> {
+    const limits = this.effective(user);
+    const usedBytes = await this.usedBytes(user.id);
+    let blockedBy: LimitStatus['blockedBy'] = null;
+    if (limits.writableUntil && Date.parse(limits.writableUntil) <= Date.now()) blockedBy = 'time_limit_expired';
+    else if (limits.storageQuotaMb !== null && usedBytes >= limits.storageQuotaMb * MB) blockedBy = 'quota_exceeded';
+    return { ...limits, usedBytes, blockedBy };
+  }
+
+  // Throws when the account may not create new commits.
+  async assertWritable(user: User): Promise<void> {
+    const s = await this.status(user);
+    if (s.blockedBy) throw new ServiceError(s.blockedBy, 403);
+  }
+}

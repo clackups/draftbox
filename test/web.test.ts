@@ -316,6 +316,44 @@ test('blocking hides the user and ends sessions', async () => {
   assert.equal(await env.svc.users.getByEmail('bob@example.com'), null);
 });
 
+test('an account over its limits is read-only in the web interface', async () => {
+  await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'quinn@example.com' });
+  const quinn = new Browser(env);
+  await quinn.login('quinn@example.com');
+  await quinn.post('/new', { name: 'notes', description: '', visibility: 'private' });
+  await quinn.post('/quinn/notes/new', { ref: 'main', base: '', dir: '', name: 'a.md', content: 'a\n', message: '' });
+  const user = (await env.svc.users.getByEmail('quinn@example.com'))!;
+  assert.equal((await env.svc.limits.status(user)).blockedBy, null);
+  assert.ok((await env.svc.limits.status(user)).usedBytes > 0);
+  const setLimits = (patch: Record<string, unknown>) => env.svc.ctx.store.transact('Set limits', async (tx) => {
+    const u = (await tx.get<Record<string, unknown>>(`users/${user.id}.json`))!;
+    tx.put(`users/${user.id}.json`, { ...u, ...patch });
+  });
+
+  await setLimits({ storageQuotaMb: 0.0001 });
+  let page = await quinn.get('/quinn/notes');
+  assert.match(page.text, /storage quota of this account is used up/);
+  assert.doesNotMatch(page.text, /\/quinn\/notes\/new/);
+  const base = (await env.svc.repos.resolveBranch(await env.svc.repos.open((await env.svc.repos.getByName(user, 'notes'))!), 'main'))!;
+  let r = await quinn.post('/quinn/notes/edit/a.md', { ref: 'main', base, dir: '', name: 'a.md', content: 'kept text\n', message: '' });
+  assert.equal(r.res.status, 403);
+  assert.match(r.text, /kept text/);
+  assert.equal((await quinn.post('/quinn/notes/tags', { name: 'v1', message: '' })).res.status, 403);
+  assert.equal((await quinn.post('/new', { name: 'more', description: '', visibility: 'private' })).res.status, 403);
+  // Reading continues to work.
+  assert.equal((await quinn.get('/quinn/notes/raw/a.md')).text, 'a\n');
+
+  await setLimits({ storageQuotaMb: null, writableUntil: new Date(Date.now() - 1000).toISOString() });
+  page = await quinn.get('/quinn/notes');
+  assert.match(page.text, /time limit of this account has expired/);
+  r = await quinn.post('/quinn/notes/new', { ref: 'main', base, dir: '', name: 'b.md', content: 'b\n', message: '' });
+  assert.equal(r.res.status, 403);
+
+  await setLimits({ writableUntil: new Date(Date.now() + 86400_000).toISOString() });
+  r = await quinn.post('/quinn/notes/new', { ref: 'main', base, dir: '', name: 'b.md', content: 'b\n', message: '' });
+  assert.equal(r.res.status, 302);
+});
+
 test('static files use the configured cache lifetime', async () => {
   const res = await env.app.request('/static/app.js');
   assert.equal(res.status, 200);

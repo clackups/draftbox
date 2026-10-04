@@ -77,6 +77,15 @@ export interface Config {
   trustProxy: boolean;
   // Browser cache lifetime of static files (app.js, app.css, ...), seconds.
   staticCacheSeconds: number;
+
+  // Defaults for user accounts; invitations and pre-registrations may
+  // set other values. null means unlimited.
+  limits: {
+    // Total size of the user's repositories on disk.
+    storageQuotaMb: number | null;
+    // Days after registration during which the account may write.
+    timeLimitDays: number | null;
+  };
 }
 
 const DEFAULTS: Config = {
@@ -96,6 +105,7 @@ const DEFAULTS: Config = {
   sessionMaxAgeDays: 30,
   trustProxy: false,
   staticCacheSeconds: 60,
+  limits: { storageQuotaMb: 100, timeLimitDays: null },
 };
 
 export function loadConfig(path?: string): Config {
@@ -115,6 +125,7 @@ export function finalizeConfig(partial: Partial<Config>, env: Record<string, str
     oauth: { ...partial.oauth },
     admins: { ...DEFAULTS.admins, ...partial.admins },
     mail: { ...DEFAULTS.mail, ...partial.mail },
+    limits: { ...DEFAULTS.limits, ...partial.limits },
   };
   if (env.DRAFTBOX_SESSION_SECRET) cfg.sessionSecret = env.DRAFTBOX_SESSION_SECRET;
   if (env.DRAFTBOX_ENCRYPTION_KEY) cfg.encryptionKey = env.DRAFTBOX_ENCRYPTION_KEY;
@@ -128,6 +139,10 @@ export function finalizeConfig(partial: Partial<Config>, env: Record<string, str
     throw new Error('staticCacheSeconds must be a non-negative number');
   }
   cfg.staticCacheSeconds = Math.floor(cfg.staticCacheSeconds);
+  for (const key of ['storageQuotaMb', 'timeLimitDays'] as const) {
+    const v = cfg.limits[key];
+    if (v !== null && !(Number.isFinite(v) && v > 0)) throw new Error(`limits.${key} must be a positive number or null`);
+  }
 
   cfg.baseUrl = cfg.baseUrl.replace(/\/+$/, '');
   cfg.admins.emails = cfg.admins.emails.map((e) => e.trim().toLowerCase());

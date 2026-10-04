@@ -6,6 +6,7 @@ import { ServiceError } from '../services/context.ts';
 import { UserService } from '../services/users.ts';
 import { RepoService } from '../services/repos.ts';
 import { TokenService } from '../services/tokens.ts';
+import { LimitService } from '../services/limits.ts';
 import { BrandingService, InvitationService, PreregistrationService } from '../services/admin.ts';
 import { buildProviders, type OAuthProvider } from '../auth/oauth.ts';
 import { csrfToken, LANG_COOKIE, SESSION_COOKIE, type SessionData, unsign } from '../auth/session.ts';
@@ -29,6 +30,7 @@ export interface Services {
   invites: InvitationService;
   prereg: PreregistrationService;
   branding: BrandingService;
+  limits: LimitService;
   providers: Map<string, OAuthProvider>;
 }
 
@@ -66,6 +68,7 @@ export function createServices(ctx: Context): Services {
     invites: new InvitationService(ctx),
     prereg: new PreregistrationService(ctx),
     branding: new BrandingService(ctx),
+    limits: new LimitService(ctx),
     providers: buildProviders(ctx.config),
   };
 }

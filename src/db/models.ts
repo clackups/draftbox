@@ -55,6 +55,14 @@ export interface PendingContactEmail {
   expiresAt: string;
 }
 
+// Storage quota and time limit granted by an invitation or a
+// pre-registration. An absent field means the configured default,
+// null means unlimited.
+export interface LimitGrant {
+  storageQuotaMb?: number | null;
+  timeLimitDays?: number | null;
+}
+
 export interface User {
   id: string;
   // Primary address from the OAuth login; identifies the account.
@@ -77,6 +85,11 @@ export interface User {
   sshKeys: SshKey[];
   // Incremented to invalidate all existing web sessions of the user.
   sessionEpoch: number;
+  // Exceeding the quota or the time limit makes the account read-only.
+  // Absent: the configured default (time limit counted from createdAt);
+  // null: unlimited.
+  storageQuotaMb?: number | null;
+  writableUntil?: string | null;
 }
 
 export function contactEmailOf(user: User): string {
@@ -132,12 +145,14 @@ export interface Invitation {
   note: string;
   usedBy?: string;
   usedAt?: string;
+  limits?: LimitGrant;
 }
 
 export interface Preregistration {
   email: string;
   createdAt: string;
   note: string;
+  limits?: LimitGrant;
 }
 
 export interface Branding {

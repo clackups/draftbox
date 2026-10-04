@@ -97,14 +97,21 @@ async function loadRepo(c: Ctx, svc: Services, opts: { owner?: boolean; ref?: st
     }
   }
   const branches = advanced ? await svc.repos.branches(git) : [];
+  const readOnly = isOwner ? (await svc.limits.status(owner)).blockedBy : null;
   return {
     page, owner, repo, git, isOwner, advanced, ref, refKind, commitOid, branches,
     cloneUrl: `${svc.ctx.config.baseUrl}${urlPath(owner.handle, repo.name)}.git`,
+    readOnly,
   };
 }
 
 function requireBranch(rc: RepoCtx): void {
   if (rc.refKind !== 'branch') throw new ServiceError('not_a_branch');
+}
+
+// The owner's quota or time limit is exceeded: no new commits or refs.
+function requireWritable(rc: RepoCtx): void {
+  if (rc.readOnly) throw new ServiceError(rc.readOnly, 403);
 }
 
 function author(c: Ctx): { name: string; email: string } {
@@ -130,6 +137,8 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     const user = requireUser(c);
     const f = await formFields(c);
     const values = { name: (f.name ?? '').trim(), description: f.description ?? '', visibility: (f.visibility === 'public' ? 'public' : 'private') as Visibility };
+    const { blockedBy } = await svc.limits.status(user);
+    if (blockedBy) return c.html(newRepoPage(c.var.page, values, blockedBy), 403);
     try {
       const repo = await svc.repos.create(user, { ...values, initReadme: false });
       setFlash(c, 'ok', 'repo_created');
@@ -231,6 +240,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
   app.get('/:owner/:repo/edit/*', async (c) => {
     const rc = await loadRepo(c, svc, { owner: true });
     requireBranch(rc);
+    requireWritable(rc);
     const path = subPath(c, 'edit');
     if (!rc.commitOid || !path) return c.notFound();
     const found = await svc.repos.treeAt(rc.git, rc.commitOid, path);
@@ -251,6 +261,8 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     const newPath = joinPath(dir, f.name ?? '');
     const content = normalizeNewlines(f.content ?? '');
     const view = { path, dir, isNew: false, content, base: f.base ?? '', message: f.message ?? '' };
+    // Keep the user's text so that it is not lost.
+    if (rc.readOnly) return c.html(editPage(rc, { ...view, error: rc.readOnly }), 403);
     if (!validFilePath(newPath)) return c.html(editPage(rc, { ...view, error: 'invalid_path' }), 400);
     const changes = new Map<string, Uint8Array | null>([[newPath, enc.encode(content)]]);
     if (newPath !== path) {
@@ -276,6 +288,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
   app.get('/:owner/:repo/new', async (c) => {
     const rc = await loadRepo(c, svc, { owner: true });
     requireBranch(rc);
+    requireWritable(rc);
     const dir = joinPath(c.req.query('dir') ?? '', '');
     return c.html(editPage(rc, { path: '', dir, isNew: true, content: '', base: rc.commitOid ?? '', message: '' }));
   });
@@ -289,6 +302,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     const path = joinPath(dir, name);
     const content = normalizeNewlines(f.content ?? '');
     const view = { path: name, dir, isNew: true, content, base: f.base ?? '', message: f.message ?? '' };
+    if (rc.readOnly) return c.html(editPage(rc, { ...view, error: rc.readOnly }), 403);
     if (!validFilePath(path)) return c.html(editPage(rc, { ...view, error: 'invalid_path' }), 400);
     if (rc.commitOid && (await rc.git.lookupPath((await rc.git.getCommit(rc.commitOid))!.treeOid, path))) {
       return c.html(editPage(rc, { ...view, error: 'file_exists' }), 400);
@@ -309,6 +323,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
   app.get('/:owner/:repo/upload', async (c) => {
     const rc = await loadRepo(c, svc, { owner: true });
     requireBranch(rc);
+    requireWritable(rc);
     return c.html(uploadPage(rc, joinPath(c.req.query('dir') ?? '', ''), rc.commitOid ?? ''));
   });
 
@@ -317,6 +332,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     const str = (k: string) => (typeof body[k] === 'string' ? (body[k] as string) : '');
     const rc = await loadRepo(c, svc, { owner: true, ref: str('ref') });
     requireBranch(rc);
+    requireWritable(rc);
     const dir = joinPath(str('dir'), '');
     const raw = body.files;
     const files = (Array.isArray(raw) ? raw : [raw]).filter((x): x is File => x instanceof File && x.name !== '');
@@ -344,6 +360,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     const f = await formFields(c);
     const rc = await loadRepo(c, svc, { owner: true, ref: f.ref });
     requireBranch(rc);
+    requireWritable(rc);
     const path = subPath(c, 'delete');
     if (!path) return c.notFound();
     await svc.repos.commitFiles(rc.git, rc.ref, f.base || null, new Map([[path, null]]), `Delete ${path}`, author(c));
@@ -420,6 +437,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
 
   app.post('/:owner/:repo/tags', async (c) => {
     const rc = await loadRepo(c, svc, { owner: true });
+    requireWritable(rc);
     const f = await formFields(c);
     const target = rc.advanced ? (f.target || DEFAULT_BRANCH) : DEFAULT_BRANCH;
     await svc.repos.createTag(rc.git, (f.name ?? '').trim(), target, f.message ?? '', author(c));
@@ -448,6 +466,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
   app.post('/:owner/:repo/branches', async (c) => {
     const rc = await loadRepo(c, svc, { owner: true });
     if (!rc.advanced) throw new ServiceError('advanced_mode_required', 403);
+    requireWritable(rc);
     const f = await formFields(c);
     const name = (f.name ?? '').trim();
     await svc.repos.createBranch(rc.git, name, f.from || DEFAULT_BRANCH);

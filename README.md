@@ -72,6 +72,13 @@ rate limiting sees client addresses.
 `staticCacheSeconds` (default 60) sets how long browsers may cache
 static files such as `app.js` and `app.css`.
 
+`limits` sets the default storage quota (`storageQuotaMb`, default 100)
+and time limit (`timeLimitDays` after registration, default `null`,
+i.e. unlimited) of user accounts. Invitations and pre-registrations can
+grant other values. An account that exceeds its quota or time limit
+becomes read-only: its repositories can still be browsed and cloned,
+but new commits through the web editor or `git push` are refused.
+
 Using Git
 ---------
 

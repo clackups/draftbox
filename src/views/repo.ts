@@ -18,6 +18,9 @@ export interface RepoCtx {
   commitOid: string | null;
   branches: RefInfo[];
   cloneUrl: string;
+  // For the owner: error code telling why the repository is read-only
+  // (quota or time limit), or null.
+  readOnly: string | null;
 }
 
 export function repoUrl(rc: RepoCtx, ...rest: string[]): string {
@@ -69,6 +72,7 @@ export function repoLayout(rc: RepoCtx, tab: string, title: string, body: Html):
   ${rc.advanced ? tabItem('branches', repoUrl(rc, 'branches')) : ''}
   ${rc.isOwner ? tabItem('settings', repoUrl(rc, 'settings')) : ''}
 </nav>
+${rc.isOwner && rc.readOnly ? html`<p class="warning">${t('error.' + rc.readOnly)}</p>` : ''}
 ${body}`);
 }
 
@@ -92,7 +96,7 @@ function cloneBox(rc: RepoCtx): Html {
 }
 
 function canEdit(rc: RepoCtx): boolean {
-  return rc.isOwner && rc.refKind === 'branch';
+  return rc.isOwner && rc.refKind === 'branch' && !rc.readOnly;
 }
 
 export function treePage(rc: RepoCtx, path: string, entries: TreeEntry[], readme: { name: string; html: string } | null, head: CommitInfo | null): string {
@@ -126,7 +130,7 @@ export function emptyRepoPage(rc: RepoCtx): string {
   return repoLayout(rc, 'files', rc.repo.name, html`
 <section class="card">
   <h2>${t('repo.empty_title')}</h2>
-  ${rc.isOwner ? html`<p>${t('repo.empty_owner')}</p>
+  ${rc.isOwner && !rc.readOnly ? html`<p>${t('repo.empty_owner')}</p>
     <p><a class="btn" href="${withRef(rc, repoUrl(rc, 'new'))}">${t('repo.new_file')}</a>
        <a class="btn btn-secondary" href="${withRef(rc, repoUrl(rc, 'upload'))}">${t('repo.upload')}</a></p>
     <h3>${t('repo.empty_push')}</h3>
@@ -295,7 +299,7 @@ export function tagsPage(rc: RepoCtx, tags: TagRow[]): string {
   const { t } = rc.page;
   return repoLayout(rc, 'tags', `${t('repo.tab_tags')} - ${rc.repo.name}`, html`
 <p class="muted">${t('repo.tags_intro')}</p>
-${rc.isOwner ? html`<section class="card"><h2>${t('repo.tag_create')}</h2>
+${rc.isOwner && !rc.readOnly ? html`<section class="card"><h2>${t('repo.tag_create')}</h2>
 <form method="post" action="${repoUrl(rc, 'tags')}" class="stack">
   ${csrfField(rc.page)}
   <div class="row">
@@ -319,7 +323,7 @@ export function branchesPage(rc: RepoCtx, rows: Array<{ name: string; commit: Co
   const { t } = rc.page;
   return repoLayout(rc, 'branches', `${t('repo.tab_branches')} - ${rc.repo.name}`, html`
 <p class="muted">${t('repo.branches_intro')}</p>
-${rc.isOwner ? html`<section class="card"><h2>${t('repo.branch_create')}</h2>
+${rc.isOwner && !rc.readOnly ? html`<section class="card"><h2>${t('repo.branch_create')}</h2>
 <form method="post" action="${repoUrl(rc, 'branches')}" class="row">
   ${csrfField(rc.page)}
   <label>${t('repo.branch_name')}<input type="text" name="name" required class="mono"></label>

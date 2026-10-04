@@ -37,5 +37,6 @@
   "defaultLanguage": "en",
   "sessionMaxAgeDays": 30,
   "staticCacheSeconds": 60,
+  "limits": { "storageQuotaMb": 100, "timeLimitDays": null },
   "gitBinary": "git"
 }

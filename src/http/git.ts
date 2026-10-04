@@ -98,6 +98,12 @@ export function registerGitRoutes(app: Hono<AppEnv>, svc: Services): void {
         : c.text('Repository not found\n', 404);
     }
 
+    if (write) {
+      const { blockedBy } = await svc.limits.status(owner);
+      if (blockedBy === 'quota_exceeded') return c.text('Storage quota exceeded: the repository is read-only\n', 403);
+      if (blockedBy === 'time_limit_expired') return c.text('Account time limit expired: the repository is read-only\n', 403);
+    }
+
     const repoPath = svc.ctx.repoPath(repo.id);
     const env = gitEnv(c);
     const advertise = action === 'info/refs';

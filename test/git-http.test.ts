@@ -151,3 +151,29 @@ test('protocol v0 fetch also works', async () => {
   await git(['-c', 'protocol.version=0', 'clone', '-q', url('public-doc'), 'v0'], dir);
   assert.ok(readFileSync(join(dir, 'v0', 'README.md'), 'utf8').length > 0);
 });
+
+test('push is refused when the quota or time limit is exceeded; clone still works', async () => {
+  const setLimits = (patch: Partial<User>) => env.svc.ctx.store.transact('Set limits', async (tx) => {
+    const u = (await tx.get<User>(`users/${owner.id}.json`))!;
+    tx.put(`users/${owner.id}.json`, { ...u, ...patch });
+  });
+  const dir = mkdtempSync(join(env.dir, 'w-'));
+  await git(['clone', '-q', url('secret', rwToken), 'repo'], dir);
+  const work = join(dir, 'repo');
+  writeFileSync(join(work, 'limit.md'), 'limit\n');
+  await git(['add', 'limit.md'], work);
+  await git(['commit', '-qm', 'Limit'], work);
+
+  // A tiny quota (about 100 bytes) is already used up.
+  await setLimits({ storageQuotaMb: 0.0001 });
+  let err = await gitFails(['push', '-q', 'origin', 'main'], work);
+  assert.match(err, /Storage quota exceeded/);
+  await git(['clone', '-q', url('secret', rwToken), 'again'], dir);
+
+  await setLimits({ storageQuotaMb: null, writableUntil: new Date(Date.now() - 1000).toISOString() });
+  err = await gitFails(['push', '-q', 'origin', 'main'], work);
+  assert.match(err, /time limit expired/);
+
+  await setLimits({ writableUntil: null });
+  await git(['push', '-q', 'origin', 'main'], work);
+});
