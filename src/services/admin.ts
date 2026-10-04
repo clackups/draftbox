@@ -125,11 +125,11 @@ export class BrandingService {
     return value;
   }
 
-  async update(patch: Partial<Pick<Branding, 'siteName' | 'primaryColor' | 'accentColor' | 'lightBackground' | 'darkBackground' | 'defaultTheme' | 'customCss' | 'footerText'>>, actor: string): Promise<Branding> {
+  async update(patch: Partial<Pick<Branding, 'siteName' | 'primaryColor' | 'accentColor' | 'lightBackground' | 'darkBackground' | 'lightPanel' | 'darkPanel' | 'defaultTheme' | 'customCss' | 'footerText'>>, actor: string): Promise<Branding> {
     return this.ctx.store.transact(`Update branding by ${actor}`, async (tx) => {
       const cur = { ...DEFAULT_BRANDING, ...(await tx.get<Partial<Branding>>('settings/branding.json')) };
       if (patch.siteName !== undefined) cur.siteName = patch.siteName.trim().slice(0, 60) || DEFAULT_BRANDING.siteName;
-      for (const key of ['primaryColor', 'accentColor', 'lightBackground', 'darkBackground'] as const) {
+      for (const key of ['primaryColor', 'accentColor', 'lightBackground', 'darkBackground', 'lightPanel', 'darkPanel'] as const) {
         const value = patch[key];
         if (value === undefined) continue;
         if (!COLOR_RE.test(value)) throw new ServiceError('invalid_color');

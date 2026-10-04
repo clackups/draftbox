@@ -244,6 +244,8 @@
   "admin.accent_color": "Akzentfarbe",
   "admin.light_background": "Hintergrund (hell)",
   "admin.dark_background": "Hintergrund (dunkel)",
+  "admin.light_panel": "Hintergrund der Bereiche (hell)",
+  "admin.dark_panel": "Hintergrund der Bereiche (dunkel)",
   "admin.color_choose": "Farbe wählen",
   "admin.color_hue": "Farbton",
   "admin.color_saturation": "Sättigung",

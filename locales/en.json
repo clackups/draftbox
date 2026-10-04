@@ -244,6 +244,8 @@
   "admin.accent_color": "Accent color",
   "admin.light_background": "Background (light)",
   "admin.dark_background": "Background (dark)",
+  "admin.light_panel": "Panel background (light)",
+  "admin.dark_panel": "Panel background (dark)",
   "admin.color_choose": "Choose a color",
   "admin.color_hue": "Hue",
   "admin.color_saturation": "Saturation",

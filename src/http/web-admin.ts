@@ -194,6 +194,8 @@ function brandingPage(page: Page, b: Branding): string {
     <label>${t('admin.accent_color')}${colorField('accentColor', b.accentColor)}</label>
     <label>${t('admin.light_background')}${colorField('lightBackground', b.lightBackground)}</label>
     <label>${t('admin.dark_background')}${colorField('darkBackground', b.darkBackground)}</label>
+    <label>${t('admin.light_panel')}${colorField('lightPanel', b.lightPanel)}</label>
+    <label>${t('admin.dark_panel')}${colorField('darkPanel', b.darkPanel)}</label>
     <label>${t('admin.default_theme')}<select name="defaultTheme">
       ${themes.map((th) => html`<option value="${th}" ${th === b.defaultTheme ? 'selected' : ''}>${t('theme.' + th)}</option>`)}</select></label>
   </div>
@@ -329,6 +331,8 @@ export function registerAdminRoutes(app: Hono<AppEnv>, svc: Services): void {
       accentColor: f.accentColor,
       lightBackground: f.lightBackground,
       darkBackground: f.darkBackground,
+      lightPanel: f.lightPanel,
+      darkPanel: f.darkPanel,
       defaultTheme: f.defaultTheme as Theme,
       footerText: f.footerText,
       customCss: f.customCss,

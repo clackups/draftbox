@@ -537,7 +537,7 @@ test('branding and language selection', async () => {
   await admin.login(ADMIN_EMAIL);
   await admin.get('/admin/branding');
   await admin.post('/admin/branding', {
-    siteName: 'Writers Hub', primaryColor: '#112233', accentColor: '#445566', lightBackground: '#fafafa', darkBackground: '#101010',
+    siteName: 'Writers Hub', primaryColor: '#112233', accentColor: '#445566', lightBackground: '#fafafa', darkBackground: '#101010', lightPanel: '#fefefe', darkPanel: '#202020',
     defaultTheme: 'dark', footerText: 'Hello', customCss: 'body{x:y}</style><script>',
   });
   const anon = new Browser(env);
@@ -547,8 +547,9 @@ test('branding and language selection', async () => {
   const css = await anon.get('/branding/theme.css');
   assert.match(css.text, /--brand:#112233/);
   assert.match(css.text, /:root\{[^}]*--bg:#fafafa/);
-  assert.match(css.text, /:root\[data-theme="dark"\]\{--bg:#101010;\}/);
-  assert.match(css.text, /prefers-color-scheme: dark\)\{:root:not\(\[data-theme="light"\]\)\{--bg:#101010;/);
+  assert.match(css.text, /:root\{[^}]*--surface:#fefefe/);
+  assert.match(css.text, /:root\[data-theme="dark"\]\{--bg:#101010;--surface:#202020;\}/);
+  assert.match(css.text, /prefers-color-scheme: dark\)\{:root:not\(\[data-theme="light"\]\)\{--bg:#101010;--surface:#202020;/);
   assert.doesNotMatch(css.text, /<\/style/);
 
   await anon.get('/lang/de?next=/');

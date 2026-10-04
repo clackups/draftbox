@@ -38,9 +38,10 @@ export function staticUrl(name: string): string {
 // administrator's custom CSS. The dark background selectors mirror the
 // dark theme rules in app.css, which this file overrides.
 export function themeCss(b: Branding): string {
-  return `:root{--brand:${b.primaryColor};--accent:${b.accentColor};--bg:${b.lightBackground};}\n`
-    + `@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:${b.darkBackground};}}\n`
-    + `:root[data-theme="dark"]{--bg:${b.darkBackground};}\n`
+  const dark = `--bg:${b.darkBackground};--surface:${b.darkPanel};`;
+  return `:root{--brand:${b.primaryColor};--accent:${b.accentColor};--bg:${b.lightBackground};--surface:${b.lightPanel};}\n`
+    + `@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){${dark}}}\n`
+    + `:root[data-theme="dark"]{${dark}}\n`
     + `${b.customCss}\n`;
 }
 

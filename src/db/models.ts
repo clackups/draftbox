@@ -162,6 +162,9 @@ export interface Branding {
   // Page background of the light and dark appearance.
   lightBackground: string;
   darkBackground: string;
+  // Background of panels (cards, top bar, form fields).
+  lightPanel: string;
+  darkPanel: string;
   defaultTheme: Theme;
   customCss: string;
   hasLogo: boolean;
@@ -175,6 +178,8 @@ export const DEFAULT_BRANDING: Branding = {
   accentColor: '#c9822b',
   lightBackground: '#f7f6f2',
   darkBackground: '#161a18',
+  lightPanel: '#ffffff',
+  darkPanel: '#1f2421',
   defaultTheme: 'auto',
   customCss: '',
   hasLogo: false,

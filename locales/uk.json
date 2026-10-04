@@ -244,6 +244,8 @@
   "admin.accent_color": "Акцентний колір",
   "admin.light_background": "Тло (світле)",
   "admin.dark_background": "Тло (темне)",
+  "admin.light_panel": "Тло панелей (світле)",
+  "admin.dark_panel": "Тло панелей (темне)",
   "admin.color_choose": "Оберіть колір",
   "admin.color_hue": "Відтінок",
   "admin.color_saturation": "Насиченість",
