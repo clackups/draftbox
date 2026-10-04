@@ -156,15 +156,14 @@ test('simple mode hides branches; advanced mode manages them', async () => {
 test('access tokens and one-time passwords', async () => {
   const alice = new Browser(env);
   await alice.login('alice@example.com');
+  // Simple mode suggests a one-time password and hides the token value,
+  // which is retrieved through the token-exchange API instead.
+  assert.match((await alice.get('/settings/tokens')).text, /name="otp" value="1" checked/);
   const r = await alice.post('/settings/tokens', { name: 'laptop', repoId: '', access: 'read', validity: '3', otp: '1' });
   assert.equal(r.res.status, 200);
-  const value = /value="(dbx_[0-9a-f]{16}_[A-Za-z0-9_-]{43})"/.exec(r.text)![1];
+  assert.doesNotMatch(r.text, /dbx_/);
   const otp = /<p class="otp">(\d{4}) (\d{4})<\/p>/.exec(r.text)!;
   const password = otp[1] + otp[2];
-
-  const auth = await env.svc.tokens.authenticate(value);
-  assert.equal(auth?.token.access, 'read');
-  assert.ok(auth?.token.expiresAt);
 
   const exchange = (pw: string) => env.app.request('/api/v1/token-exchange', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }),
@@ -172,7 +171,10 @@ test('access tokens and one-time passwords', async () => {
   let res = await exchange(password);
   assert.equal(res.status, 200);
   const body = await res.json() as { token: string; access: string; branch: string | null };
-  assert.equal(body.token, value);
+  const value = body.token;
+  const auth = await env.svc.tokens.authenticate(value);
+  assert.equal(auth?.token.access, 'read');
+  assert.ok(auth?.token.expiresAt);
   assert.equal(body.access, 'read');
   assert.equal(body.branch, null);
   // Only once.
@@ -180,7 +182,9 @@ test('access tokens and one-time passwords', async () => {
 
   // Simple mode hides the command-line examples.
   assert.doesNotMatch(r.text, /curl|git clone/);
-  assert.match(r.text, /Enter the token as the password/);
+  const plain = await alice.post('/settings/tokens', { name: 'plain', repoId: '', access: 'read', validity: '' });
+  assert.match(plain.text, /dbx_/);
+  assert.match(plain.text, /Enter the token as the password/);
 
   // A one-time password for an existing token keeps the token value.
   const tokenId = value.split('_')[1];
@@ -215,13 +219,17 @@ test('access tokens and one-time passwords', async () => {
   assert.match(scopedBody.cloneUrl, /\/alice\/otp-repo\.git$/);
   assert.equal(scopedBody.branch, 'main');
 
-  // Advanced mode shows the API call and the clone command.
+  // Advanced mode shows the API call and the clone command, and the
+  // token value even when a one-time password is added.
   await alice.post('/settings', { advancedMode: '1' });
+  assert.match((await alice.get('/settings/tokens')).text, /name="otp" value="1">/);
   const advanced = await otpFor();
   assert.match(advanced.page.text, /curl -X POST/);
   const created = await alice.post('/settings/tokens', { name: 'adv', repoId: '', access: 'write', validity: '' });
   assert.match(created.text, /git clone http:\/\/alice:TOKEN@/);
-  await alice.post('/settings', {});
+  const advOtp = await alice.post('/settings/tokens', { name: 'adv-otp', repoId: '', access: 'write', validity: '', otp: '1' });
+  assert.match(advOtp.text, /dbx_/);
+  assert.match(advOtp.text, /<p class="otp">/);
 
   // Tokens created before values were stored encrypted get a new value.
   const legacy = await alice.post('/settings/tokens', { name: 'old', repoId: '', access: 'write', validity: '' });
@@ -238,6 +246,7 @@ test('access tokens and one-time passwords', async () => {
   assert.notEqual(newValue, legacyValue);
   assert.equal(await env.svc.tokens.authenticate(legacyValue), null);
   assert.ok(await env.svc.tokens.authenticate(newValue));
+  await alice.post('/settings', {});
 
   // Revoking invalidates the token.
   await alice.get('/settings/tokens');

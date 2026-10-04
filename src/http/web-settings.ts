@@ -120,7 +120,7 @@ ${tokens.length === 0 ? html`<p class="muted">${t('tokens.none')}</p>` : html`<d
     <option value="">${t('tokens.never_expires')}</option>
     ${VALIDITY_MONTHS.map((m) => html`<option value="${m}">${t('tokens.months', { n: m })}</option>`)}
   </select></label>
-  <label class="check"><input type="checkbox" name="otp" value="1">
+  <label class="check"><input type="checkbox" name="otp" value="1"${user.prefs.advancedMode ? '' : ' checked'}>
     <span><strong>${t('tokens.with_otp')}</strong><br><small class="muted">${t('tokens.otp_help', { days: OTP_LIFETIME_DAYS })}</small></span></label>
   <div><button class="btn">${t('tokens.create')}</button></div>
 </form>
@@ -141,12 +141,15 @@ function issuedPage(page: Page, svc: Services, user: User, issued: IssuedToken, 
   const base = svc.ctx.config.baseUrl;
   const advanced = user.prefs.advancedMode;
   const cloneUrl = repo ? `${base}/${user.handle}/${repo.name}.git` : `${base}/${user.handle}/REPOSITORY.git`;
-  const title = issued.value ? t('tokens.issued_title') : t('tokens.otp_title', { name: issued.token.name });
+  // In simple mode a token with a one-time password is meant to be
+  // retrieved through the token-exchange API, so its value is not shown.
+  const value = issued.otp && !advanced ? undefined : issued.value;
+  const title = value ? t('tokens.issued_title') : t('tokens.otp_title', { name: issued.token.name });
   return layout(page, title, html`<h1>${title}</h1>
 <section class="card">
-  ${issued.value ? html`<p class="warning">${t('tokens.copy_now')}</p>
+  ${value ? html`<p class="warning">${t('tokens.copy_now')}</p>
   <label>${t('tokens.token_value')}
-    <div class="copyrow"><input type="text" readonly value="${issued.value}" class="mono" id="token-value"><button type="button" class="btn btn-small" data-copy="token-value">${t('action.copy')}</button></div></label>` : ''}
+    <div class="copyrow"><input type="text" readonly value="${value}" class="mono" id="token-value"><button type="button" class="btn btn-small" data-copy="token-value">${t('action.copy')}</button></div></label>` : ''}
   ${issued.otp ? html`<div class="otp-box">
     <p>${t('tokens.otp_is')}</p>
     <p class="otp">${issued.otp.slice(0, 4)} ${issued.otp.slice(4)}</p>
@@ -154,7 +157,7 @@ function issuedPage(page: Page, svc: Services, user: User, issued: IssuedToken, 
     ${advanced ? html`<pre class="mono">curl -X POST -H 'Content-Type: application/json' \\
   -d '{"password":"${issued.otp}"}' ${base}/api/v1/token-exchange</pre>` : ''}
   </div>` : ''}
-  ${issued.value ? html`<h2>${t('tokens.how_to_use')}</h2>
+  ${value ? html`<h2>${t('tokens.how_to_use')}</h2>
   ${advanced ? html`<p>${t('tokens.usage_git')}</p>
   <pre class="mono">git clone ${cloneUrl.replace('://', `://${user.handle}:TOKEN@`)}</pre>
   <p class="muted">${t('tokens.usage_password')}</p>` : html`<p>${t('tokens.usage_simple')}</p>`}` : ''}
