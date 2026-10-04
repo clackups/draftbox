@@ -17,6 +17,8 @@ export interface UserLimits {
   // null means unlimited.
   storageQuotaMb: number | null;
   writableUntil: string | null;
+  // Administrator accounts are never limited.
+  admin: boolean;
 }
 
 export interface LimitStatus extends UserLimits {
@@ -80,7 +82,17 @@ export class LimitService {
     this.ctx = ctx;
   }
 
+  // An account whose email is a configured administrator address and
+  // that has signed in through a trusted provider. Unlike the session's
+  // admin flag this also applies to Git access with tokens.
+  isAdminAccount(user: User): boolean {
+    const admins = this.ctx.config.admins;
+    return admins.emails.includes(user.email)
+      && user.identities.some((i) => admins.trustedProviders.includes(i.provider));
+  }
+
   effective(user: User): UserLimits {
+    if (this.isAdminAccount(user)) return { storageQuotaMb: null, writableUntil: null, admin: true };
     const defaults = this.ctx.config.limits;
     let writableUntil: string | null;
     if (user.writableUntil !== undefined) {
@@ -93,6 +105,7 @@ export class LimitService {
     return {
       storageQuotaMb: user.storageQuotaMb !== undefined ? user.storageQuotaMb : defaults.storageQuotaMb,
       writableUntil,
+      admin: false,
     };
   }
 

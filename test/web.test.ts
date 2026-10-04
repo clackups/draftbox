@@ -68,7 +68,7 @@ test('invitations and pre-registrations set the quota and time limit', async () 
   assert.equal(user.storageQuotaMb, 500);
   const until = Date.parse(user.writableUntil!) - Date.parse(user.createdAt);
   assert.equal(until, 30 * 86400_000);
-  assert.deepEqual(env.svc.limits.effective(user), { storageQuotaMb: 500, writableUntil: user.writableUntil });
+  assert.deepEqual(env.svc.limits.effective(user), { storageQuotaMb: 500, writableUntil: user.writableUntil, admin: false });
 
   // Through the API: invitation with an unlimited quota (null) and the default time limit.
   r = await adminApi(env, 'POST', '/api/v1/admin/invitations', { note: 'lim2', storageQuotaMb: null });
@@ -80,7 +80,7 @@ test('invitations and pre-registrations set the quota and time limit', async () 
   user = (await env.svc.users.getByEmail('lim2@example.com'))!;
   assert.equal(user.storageQuotaMb, null);
   assert.equal(user.writableUntil, undefined);
-  assert.deepEqual(env.svc.limits.effective(user), { storageQuotaMb: null, writableUntil: null });
+  assert.deepEqual(env.svc.limits.effective(user), { storageQuotaMb: null, writableUntil: null, admin: false });
 
   // Through the admin pages; 0 means unlimited, empty means the default.
   const admin = new Browser(env);
@@ -105,7 +105,7 @@ test('invitations and pre-registrations set the quota and time limit', async () 
   user = (await env.svc.users.getByEmail('lim3@example.com'))!;
   assert.equal(user.storageQuotaMb, undefined);
   assert.equal(user.writableUntil, null);
-  assert.deepEqual(env.svc.limits.effective(user), { storageQuotaMb: 100, writableUntil: null });
+  assert.deepEqual(env.svc.limits.effective(user), { storageQuotaMb: 100, writableUntil: null, admin: false });
 });
 
 test('repositories: create, edit, history, tags and visibility', async () => {
@@ -408,6 +408,28 @@ test('an account over its limits is read-only in the web interface', async () =>
   await setLimits({ writableUntil: new Date(Date.now() + 86400_000).toISOString() });
   r = await quinn.post('/quinn/notes/new', { ref: 'main', base, dir: '', name: 'b.md', content: 'b\n', message: '' });
   assert.equal(r.res.status, 302);
+});
+
+test('administrator accounts have no quota or time limit', async () => {
+  const admin = new Browser(env);
+  await admin.login(ADMIN_EMAIL);
+  const id = (await env.svc.users.getByEmail(ADMIN_EMAIL))!.id;
+  await env.svc.ctx.store.transact('Set limits', async (tx) => {
+    const u = (await tx.get<Record<string, unknown>>(`users/${id}.json`))!;
+    tx.put(`users/${id}.json`, { ...u, storageQuotaMb: 0.0001, writableUntil: new Date(Date.now() - 1000).toISOString() });
+  });
+  let user = (await env.svc.users.getByEmail(ADMIN_EMAIL))!;
+  assert.equal(env.svc.limits.isAdminAccount(user), true);
+  const status = await env.svc.limits.status(user);
+  assert.deepEqual([status.storageQuotaMb, status.writableUntil, status.blockedBy], [null, null, null]);
+  await admin.post('/new', { name: 'admin-notes', description: '', visibility: 'private' });
+  const r = await admin.post(`/${user.handle}/admin-notes/new`, { ref: 'main', base: '', dir: '', name: 'a.md', content: 'a\n', message: '' });
+  assert.equal(r.res.status, 302);
+
+  // The address alone is not enough: the identity must come from a trusted provider.
+  user = { ...user, identities: [{ provider: 'github', subject: 'x' }] };
+  assert.equal(env.svc.limits.isAdminAccount(user), false);
+  assert.equal(env.svc.limits.effective(user).storageQuotaMb, 0.0001);
 });
 
 test('download all returns a ZIP archive of the repository', async () => {

@@ -78,6 +78,8 @@ i.e. unlimited) of user accounts. Invitations and pre-registrations can
 grant other values. An account that exceeds its quota or time limit
 becomes read-only: its repositories can still be browsed and cloned,
 but new commits through the web editor or `git push` are refused.
+Administrator accounts (an address in `admins.emails` that has signed
+in through one of `admins.trustedProviders`) are never limited.
 
 Using Git
 ---------
