@@ -122,7 +122,7 @@ export function createApp(svc: Services): Hono<AppEnv> {
     if ((c.res.headers.get('Content-Type') ?? '').startsWith('text/html')) {
       c.header('X-Frame-Options', 'DENY');
       c.header('Content-Security-Policy',
-        "default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+        "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
     }
   });
 

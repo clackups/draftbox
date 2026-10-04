@@ -5,6 +5,8 @@ import { Marked, type Tokens } from 'marked';
 import { escapeHtml } from '../views/html.ts';
 
 const SAFE_URL = /^(https?:|mailto:|#|\/|\.\/|\.\.\/|[^:]*$)/i;
+// Absolute and protocol-relative URLs (browsers read "/\\" as "//").
+const EXTERNAL_URL = /^([a-z][a-z0-9+.-]*:|\/[\/\\])/i;
 
 function safeUrl(href: string): string | null {
   const trimmed = href.trim();
@@ -75,6 +77,11 @@ const marked = new Marked({
       const safe = safeUrl(token.href);
       if (!safe) return escapeHtml(token.text);
       const src = rewrite(safe, 'image');
+      // Loading images from other sites would tell them who reads the
+      // document (and the page CSP blocks them): link to them instead.
+      if (EXTERNAL_URL.test(src)) {
+        return `<a href="${escapeHtml(src)}" rel="nofollow noopener">${escapeHtml(token.text || src)}</a>`;
+      }
       const title = token.title ? ` title="${escapeHtml(token.title)}"` : '';
       return `<img src="${escapeHtml(src)}" alt="${escapeHtml(token.text)}"${title} loading="lazy">`;
     },

@@ -47,6 +47,15 @@ test('markdown resolves relative links', () => {
   assert.equal(resolveRelative('', '../x'), null);
 });
 
+test('markdown links to external images instead of loading them', () => {
+  for (const src of ['https://tracker.example/p.png', '//tracker.example/p.png', '/\\tracker.example/p.png']) {
+    const out = renderMarkdown(`![pixel](${src})`);
+    assert.ok(!out.includes('<img'), out);
+    assert.ok(out.includes('>pixel</a>'), out);
+  }
+  assert.ok(renderMarkdown('![logo](/alice/notes/raw/logo.png)').includes('<img src="/alice/notes/raw/logo.png"'));
+});
+
 test('html template escapes values', () => {
   assert.equal(html`<p>${'<b>&'}</p>`.value, '<p>&lt;b&gt;&amp;</p>');
   assert.equal(html`<p>${raw('<b>')}</p>`.value, '<p><b></p>');
