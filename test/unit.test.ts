@@ -12,6 +12,7 @@ import { isValidEmail, normalizeDescription, normalizeHomepage } from '../src/se
 import { idTokenClaims } from '../src/auth/oauth.ts';
 import { sanitizeHtml } from '../src/util/sanitize.ts';
 import { safeNext } from '../src/http/app.ts';
+import { isFountainPath, renderFountain } from '../src/util/fountain.ts';
 
 test('diffLines finds insertions and deletions', () => {
   const ops = diffLines('a\nb\nc\n', 'a\nB\nc\nd\n')!;
@@ -164,4 +165,85 @@ test('safeNext accepts only paths on the same site', () => {
     'javascript:alert(1)']) {
     assert.equal(safeNext(bad), '/', String(bad));
   }
+});
+
+const SCRIPT = `Title: **BRICK & STEEL**
+Credit: Written by
+Author: Stu Maschwitz
+Draft date: 1/20/2012
+Contact:
+    Next Level Productions
+    1588 Mission Dr.
+
+EXT. BRICK'S PATIO - DAY #1#
+
+A gorgeous day.  The sun is shining.
+  But BRICK BRADDOCK is *not* happy.
+
+BRICK
+(quietly)
+Whatever happened to **you**?
+  
+You used to be _fun_.
+
+STEEL
+Ha.
+
+DAN ^
+Hey!
+
+CUT TO:
+
+.SNIPER SCOPE POV
+
+> THE END <
+
+>FADE OUT.
+
+/* cut this scene */
+# Act Two
+= Brick fights back.
+[[Check the timeline.]]
+~Willy Wonka
+===
+!SHOUTED ACTION LINE
+
+@McCLANE
+Yippee.`;
+
+test('fountain renders screenplay elements', () => {
+  assert.ok(isFountainPath('scripts/Pilot.FOUNTAIN'));
+  assert.ok(!isFountainPath('notes.md'));
+  const out = renderFountain(SCRIPT);
+  const has = (s: string) => assert.ok(out.includes(s), s);
+  has('<div class="fn-title"><strong>BRICK &amp; STEEL</strong></div>');
+  has('<div class="fn-author">Stu Maschwitz</div>');
+  has('<div class="fn-meta">Next Level Productions\n1588 Mission Dr.</div>');
+  has('<div class="fn-scene"><span class="fn-scene-number">1</span>EXT. BRICK&#39;S PATIO - DAY</div>');
+  has('<div class="fn-action">A gorgeous day.  The sun is shining.\n  But BRICK BRADDOCK is <em>not</em> happy.</div>');
+  has('<div class="fn-character">BRICK</div><div class="fn-parenthetical">(quietly)</div>'
+    + '<div class="fn-dialogue">Whatever happened to <strong>you</strong>?\n\nYou used to be <u>fun</u>.</div>');
+  has('<div class="fn-dual"><div class="fn-speech"><div class="fn-character">STEEL</div>');
+  has('<div class="fn-character">DAN</div><div class="fn-dialogue">Hey!</div></div></div>');
+  has('<div class="fn-transition">CUT TO:</div>');
+  has('<div class="fn-scene">SNIPER SCOPE POV</div>');
+  has('<div class="fn-centered">THE END</div>');
+  has('<div class="fn-transition">FADE OUT.</div>');
+  assert.ok(!out.includes('cut this scene'));
+  has('<div class="fn-section fn-section-1">Act Two</div>');
+  has('<div class="fn-synopsis">Brick fights back.</div>');
+  has('<span class="fn-note">Check the timeline.</span>');
+  has('<div class="fn-lyrics">Willy Wonka</div>');
+  has('<hr class="fn-page-break">');
+  has('<div class="fn-action">SHOUTED ACTION LINE</div>');
+  has('<div class="fn-character">McCLANE</div><div class="fn-dialogue">Yippee.</div>');
+});
+
+test('fountain output escapes HTML', () => {
+  const out = renderFountain('<script>alert(1)</script>\n\nBOB\n<img src=x onerror=alert(1)> \\*not italic\\*\n\n[[<b>x</b>]]\u0000');
+  assert.ok(!/<(script|img|b)\b/.test(out), out);
+  assert.ok(out.includes('&lt;script&gt;'));
+  assert.ok(out.includes('*not italic*'));
+  // Character cues in other scripts.
+  assert.ok(renderFountain('ІВАН\nПривіт.').includes('<div class="fn-character">ІВАН</div>'));
 });
