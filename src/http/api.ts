@@ -30,6 +30,7 @@
 //   unlimited. writableUntil is a date (writable through that day, UTC)
 //   or an ISO timestamp.
 
+import { isIPv4, isIPv6 } from 'node:net';
 import type { Hono } from 'hono';
 import type { AppEnv, Ctx, Services } from './app.ts';
 import { ServiceError } from '../services/context.ts';
@@ -38,7 +39,8 @@ import { parseLimitGrant, parseQuotaUpdate, parseUntilUpdate } from '../services
 import type { User } from '../db/models.ts';
 
 // Fixed-window limiter for the one-time password endpoint: 8-digit
-// passwords must not be guessable by brute force.
+// passwords must not be guessable by brute force. Only failed attempts
+// are counted.
 class RateLimiter {
   private hits = new Map<string, { count: number; reset: number }>();
 
@@ -50,29 +52,46 @@ class RateLimiter {
     this.windowMs = windowMs;
   }
 
-  allow(key: string): boolean {
+  blocked(key: string): boolean {
+    const cur = this.hits.get(key);
+    return cur !== undefined && cur.reset > Date.now() && cur.count >= this.limit;
+  }
+
+  fail(key: string): void {
     const now = Date.now();
     if (this.hits.size > 10000) {
       for (const [k, v] of this.hits) if (v.reset <= now) this.hits.delete(k);
     }
     const cur = this.hits.get(key);
-    if (!cur || cur.reset <= now) {
-      this.hits.set(key, { count: 1, reset: now + this.windowMs });
-      return true;
-    }
-    cur.count += 1;
-    return cur.count <= this.limit;
+    if (!cur || cur.reset <= now) this.hits.set(key, { count: 1, reset: now + this.windowMs });
+    else cur.count += 1;
   }
 }
 
+// The client address. Behind a proxy, the last X-Forwarded-For entry is
+// the one the proxy appended; earlier entries come from the client and
+// can be forged.
 export function clientIp(c: Ctx): string {
   const svc = c.var.svc;
   if (svc.ctx.config.trustProxy) {
-    const fwd = c.req.header('X-Forwarded-For');
-    if (fwd) return fwd.split(',')[0].trim();
+    const last = (c.req.header('X-Forwarded-For') ?? '').split(',').pop()?.trim();
+    if (last) return last;
   }
   const env = c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined;
   return env?.incoming?.socket?.remoteAddress ?? 'unknown';
+}
+
+// Rate limiting key of an address. One IPv6 subscriber usually holds a
+// whole /64, so its addresses share a key.
+export function rateKey(ip: string): string {
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (mapped) return mapped[1];
+  if (isIPv4(ip) || !isIPv6(ip)) return ip;
+  const [head, tail = ''] = ip.toLowerCase().split('::');
+  const left = head ? head.split(':') : [];
+  const right = tail ? tail.split(':') : [];
+  const groups = ip.includes('::') ? [...left, ...Array(8 - left.length - right.length).fill('0'), ...right] : left;
+  return groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, '')).join(':') + '::/64';
 }
 
 async function jsonBody(c: Ctx): Promise<Record<string, unknown>> {
@@ -90,13 +109,18 @@ export function registerApiRoutes(app: Hono<AppEnv>, svc: Services): void {
   const global = new RateLimiter(1000, 60 * 60_000);
 
   app.post('/api/v1/token-exchange', async (c) => {
-    if (!perIp.allow(clientIp(c)) || !global.allow('all')) {
+    const key = rateKey(clientIp(c));
+    if (perIp.blocked(key) || global.blocked('all')) {
       return c.json({ error: 'rate_limited' }, 429, { 'Retry-After': '900' });
     }
     const body = await jsonBody(c);
     const password = String(body.password ?? '').replace(/\s+/g, '');
     const result = await svc.tokens.redeemOtp(password);
-    if (!result) return c.json({ error: 'invalid_password' }, 404);
+    if (!result) {
+      perIp.fail(key);
+      global.fail('all');
+      return c.json({ error: 'invalid_password' }, 404);
+    }
     const repo = result.token.repoId ? await svc.repos.getById(result.token.repoId) : null;
     const owner = await svc.users.getById(result.token.userId);
     const branch = repo ? await svc.repos.defaultBranch(await svc.repos.open(repo)) : null;

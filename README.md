@@ -67,7 +67,9 @@ local sendmail binary (`sendmailPath`, default `/usr/sbin/sendmail`).
 Without a `mail` section, messages are only written to the server log.
 
 Run behind a TLS-terminating reverse proxy; set `trustProxy` so that
-rate limiting sees client addresses.
+rate limiting sees client addresses. Draftbox then uses the last
+address in `X-Forwarded-For`, so exactly one proxy must sit in front of
+it and that proxy must append the client address to the header.
 
 `staticCacheSeconds` (default 60) sets how long browsers may cache
 static files such as `app.js` and `app.css`.

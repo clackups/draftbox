@@ -73,7 +73,8 @@ export interface Config {
 
   defaultLanguage: string;
   sessionMaxAgeDays: number;
-  // Trust X-Forwarded-For for client addresses (set behind a reverse proxy).
+  // Take client addresses from X-Forwarded-For (set behind one reverse
+  // proxy, which must append the address it sees to that header).
   trustProxy: boolean;
   // Browser cache lifetime of static files (app.js, app.css, ...), seconds.
   staticCacheSeconds: number;
