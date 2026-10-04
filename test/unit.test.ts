@@ -245,5 +245,5 @@ test('fountain output escapes HTML', () => {
   assert.ok(out.includes('&lt;script&gt;'));
   assert.ok(out.includes('*not italic*'));
   // Character cues in other scripts.
-  assert.ok(renderFountain('ІВАН\nПривіт.').includes('<div class="fn-character">ІВАН</div>'));
+  assert.ok(renderFountain('\u0406\u0412\u0410\u041d\n\u041f\u0440\u0438\u0432\u0456\u0442.').includes('<div class="fn-character">\u0406\u0412\u0410\u041d</div>'));
 });
