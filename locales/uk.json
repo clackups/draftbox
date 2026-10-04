@@ -223,6 +223,8 @@
   "admin.site_name": "Назва сайту",
   "admin.primary_color": "Основний колір",
   "admin.accent_color": "Акцентний колір",
+  "admin.light_background": "Тло (світле)",
+  "admin.dark_background": "Тло (темне)",
   "admin.color_choose": "Оберіть колір",
   "admin.color_hue": "Відтінок",
   "admin.color_saturation": "Насиченість",

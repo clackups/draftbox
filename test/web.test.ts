@@ -331,7 +331,8 @@ test('branding and language selection', async () => {
   await admin.login(ADMIN_EMAIL);
   await admin.get('/admin/branding');
   await admin.post('/admin/branding', {
-    siteName: 'Writers Hub', primaryColor: '#112233', accentColor: '#445566', defaultTheme: 'dark', footerText: 'Hello', customCss: 'body{x:y}</style><script>',
+    siteName: 'Writers Hub', primaryColor: '#112233', accentColor: '#445566', lightBackground: '#fafafa', darkBackground: '#101010',
+    defaultTheme: 'dark', footerText: 'Hello', customCss: 'body{x:y}</style><script>',
   });
   const anon = new Browser(env);
   const page = await anon.get('/');
@@ -339,6 +340,9 @@ test('branding and language selection', async () => {
   assert.match(page.text, /data-theme="dark"/);
   const css = await anon.get('/branding/theme.css');
   assert.match(css.text, /--brand:#112233/);
+  assert.match(css.text, /:root\{[^}]*--bg:#fafafa/);
+  assert.match(css.text, /:root\[data-theme="dark"\]\{--bg:#101010;\}/);
+  assert.match(css.text, /prefers-color-scheme: dark\)\{:root:not\(\[data-theme="light"\]\)\{--bg:#101010;/);
   assert.doesNotMatch(css.text, /<\/style/);
 
   await anon.get('/lang/de?next=/');

@@ -223,6 +223,8 @@
   "admin.site_name": "Site name",
   "admin.primary_color": "Main color",
   "admin.accent_color": "Accent color",
+  "admin.light_background": "Background (light)",
+  "admin.dark_background": "Background (dark)",
   "admin.color_choose": "Choose a color",
   "admin.color_hue": "Hue",
   "admin.color_saturation": "Saturation",

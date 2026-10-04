@@ -144,6 +144,9 @@ export interface Branding {
   siteName: string;
   primaryColor: string;
   accentColor: string;
+  // Page background of the light and dark appearance.
+  lightBackground: string;
+  darkBackground: string;
   defaultTheme: Theme;
   customCss: string;
   hasLogo: boolean;
@@ -155,6 +158,8 @@ export const DEFAULT_BRANDING: Branding = {
   siteName: 'Draftbox',
   primaryColor: '#2f6f4f',
   accentColor: '#c9822b',
+  lightBackground: '#f7f6f2',
+  darkBackground: '#161a18',
   defaultTheme: 'auto',
   customCss: '',
   hasLogo: false,

@@ -223,6 +223,8 @@
   "admin.site_name": "Name der Website",
   "admin.primary_color": "Hauptfarbe",
   "admin.accent_color": "Akzentfarbe",
+  "admin.light_background": "Hintergrund (hell)",
+  "admin.dark_background": "Hintergrund (dunkel)",
   "admin.color_choose": "Farbe wählen",
   "admin.color_hue": "Farbton",
   "admin.color_saturation": "Sättigung",

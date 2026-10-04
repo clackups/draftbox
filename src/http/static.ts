@@ -35,9 +35,13 @@ export function staticUrl(name: string): string {
 }
 
 // CSS variables derived from the branding settings, followed by the
-// administrator's custom CSS.
+// administrator's custom CSS. The dark background selectors mirror the
+// dark theme rules in app.css, which this file overrides.
 export function themeCss(b: Branding): string {
-  return `:root{--brand:${b.primaryColor};--accent:${b.accentColor};}\n${b.customCss}\n`;
+  return `:root{--brand:${b.primaryColor};--accent:${b.accentColor};--bg:${b.lightBackground};}\n`
+    + `@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:${b.darkBackground};}}\n`
+    + `:root[data-theme="dark"]{--bg:${b.darkBackground};}\n`
+    + `${b.customCss}\n`;
 }
 
 export function registerStaticRoutes(app: Hono<AppEnv>, svc: Services): void {
