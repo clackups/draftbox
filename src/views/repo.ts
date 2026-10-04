@@ -1,10 +1,11 @@
 import type { Page } from '../http/app.ts';
-import { type Repo, type User, contactEmailOf } from '../db/models.ts';
+import { type AccessToken, type Repo, type User, contactEmailOf } from '../db/models.ts';
 import type { CommitInfo, GitRepo, RefInfo, TreeEntry } from '../git/types.ts';
 import type { Hunk } from '../util/diff.ts';
 import { html, raw, urlPath, type Html } from './html.ts';
 import { csrfField, layout, localTime, tHtml } from './layout.ts';
 import { DEFAULT_BRANCH } from '../services/repos.ts';
+import { tokenTable } from './tokens.ts';
 
 export interface RepoCtx {
   page: Page;
@@ -353,8 +354,12 @@ export function visibilityFields(page: Page, current: 'public' | 'private'): Htm
 </fieldset>`;
 }
 
-export function repoSettingsPage(rc: RepoCtx, error?: string): string {
+// `tokens` are the unexpired tokens of the owner that give access to
+// this repository: the ones limited to it and the ones for all
+// repositories.
+export function repoSettingsPage(rc: RepoCtx, tokens: AccessToken[], error?: string): string {
   const { t } = rc.page;
+  const repos = new Map([[rc.repo.id, rc.repo]]);
   return repoLayout(rc, 'settings', `${t('repo.tab_settings')} - ${rc.repo.name}`, html`
 ${error ? html`<p class="flash flash-error">${t('error.' + error)}</p>` : ''}
 <form method="post" action="${repoUrl(rc, 'settings')}" class="card stack">
@@ -365,6 +370,15 @@ ${error ? html`<p class="flash flash-error">${t('error.' + error)}</p>` : ''}
   ${visibilityFields(rc.page, rc.repo.visibility)}
   <div><button class="btn">${t('action.save')}</button></div>
 </form>
+<section class="card stack" id="tokens">
+  <h2>${t('nav.tokens')}</h2>
+  <p class="muted">${t('repo.tokens_help')}</p>
+  ${tokens.length === 0 ? html`<p class="muted">${t('repo.tokens_none')}</p>` : tokenTable(rc.page, tokens, repos, rc.repo.id)}
+  <div class="row">
+    <a class="btn" href="/settings/tokens?repo=${encodeURIComponent(rc.repo.id)}#create">${t('tokens.create')}</a>
+    <a href="/settings/tokens">${t('repo.tokens_manage')}</a>
+  </div>
+</section>
 <section class="card danger">
   <h2>${t('repo.delete_title')}</h2>
   <p>${t('repo.delete_help')}</p>

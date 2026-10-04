@@ -2,6 +2,7 @@ import type { Hono } from 'hono';
 import { type AppEnv, type Ctx, type Services, formFields, requireUser, setFlash } from './app.ts';
 import { ServiceError } from '../services/context.ts';
 import { DEFAULT_BRANCH, validFilePath } from '../services/repos.ts';
+import { isExpired } from '../services/tokens.ts';
 import { contactEmailOf, type Visibility } from '../db/models.ts';
 import { isMarkdownPath, renderMarkdown, type LinkResolver } from '../util/markdown.ts';
 import { diffLines, hunks } from '../util/diff.ts';
@@ -502,9 +503,16 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
 
   // ---- Repository settings ------------------------------------------------
 
+  const settingsPage = async (rc: RepoCtx, error?: string): Promise<string> => {
+    const now = Date.now();
+    const tokens = (await svc.tokens.listForUser(rc.owner.id))
+      .filter((tok) => !isExpired(tok, now) && (tok.repoId === null || tok.repoId === rc.repo.id));
+    return repoSettingsPage(rc, tokens, error);
+  };
+
   app.get('/:owner/:repo/settings', async (c) => {
     const rc = await loadRepo(c, svc, { owner: true });
-    return c.html(repoSettingsPage(rc));
+    return c.html(await settingsPage(rc));
   });
 
   app.post('/:owner/:repo/settings', async (c) => {
@@ -519,7 +527,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
       setFlash(c, 'ok', 'repo_saved');
       return c.redirect(urlPath(rc.owner.handle, updated.name, 'settings'));
     } catch (err) {
-      if (err instanceof ServiceError && err.status === 400) return c.html(repoSettingsPage(rc, err.code), 400);
+      if (err instanceof ServiceError && err.status === 400) return c.html(await settingsPage(rc, err.code), 400);
       throw err;
     }
   });
@@ -527,7 +535,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
   app.post('/:owner/:repo/settings/delete', async (c) => {
     const rc = await loadRepo(c, svc, { owner: true });
     const f = await formFields(c);
-    if ((f.confirm ?? '').trim() !== rc.repo.name) return c.html(repoSettingsPage(rc, 'confirm_mismatch'), 400);
+    if ((f.confirm ?? '').trim() !== rc.repo.name) return c.html(await settingsPage(rc, 'confirm_mismatch'), 400);
     await svc.repos.delete(rc.repo, rc.owner.email);
     setFlash(c, 'ok', 'repo_deleted');
     return c.redirect('/');

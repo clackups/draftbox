@@ -328,6 +328,59 @@ test('token form defaults to the most recently updated repository', async () => 
   assert.equal(selected?.[1], old.id);
 });
 
+test('repository settings list and manage the tokens with access', async () => {
+  await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'tara@example.com' });
+  const tara = new Browser(env);
+  await tara.login('tara@example.com');
+  await tara.post('/settings', { name: 'Tara', handle: 'tara', language: 'en', theme: 'site' });
+  await tara.post('/new', { name: 'tok-a', description: '', visibility: 'private' });
+  await tara.post('/new', { name: 'tok-b', description: '', visibility: 'private' });
+  const owner = (await env.svc.users.getByEmail('tara@example.com'))!;
+  const a = (await env.svc.repos.getByName(owner, 'tok-a'))!;
+  const b = (await env.svc.repos.getByName(owner, 'tok-b'))!;
+
+  let page = await tara.get('/tara/tok-a/settings');
+  assert.match(page.text, /No token gives access to this repository yet/);
+  assert.ok(page.text.includes(`href="/settings/tokens?repo=${a.id}#create"`));
+
+  // The create form preselects the repository it was opened from and
+  // leads back to its settings.
+  page = await tara.get(`/settings/tokens?repo=${a.id}`);
+  assert.equal(/<option value="([^"]*)" selected>/.exec(page.text)?.[1], a.id);
+  assert.match(page.text, new RegExp(`name="returnRepo" value="${a.id}"`));
+  // A repository of someone else is ignored.
+  assert.doesNotMatch((await tara.get('/settings/tokens?repo=nope')).text, /name="returnRepo"/);
+  const created = await tara.post('/settings/tokens', { name: 'for-a', repoId: a.id, access: 'write', validity: '', returnRepo: a.id });
+  assert.match(created.text, /href="\/tara\/tok-a\/settings"/);
+  await tara.post('/settings/tokens', { name: 'for-b', repoId: b.id, access: 'write', validity: '' });
+  await tara.post('/settings/tokens', { name: 'global', repoId: '', access: 'read', validity: '' });
+  const expired = await tara.post('/settings/tokens', { name: 'stale', repoId: a.id, access: 'read', validity: '1' });
+  const staleId = /value="dbx_([0-9a-f]{16})_/.exec(expired.text)![1];
+  await env.svc.ctx.store.transact('Expire token', async (tx) => {
+    const tok = (await tx.get<Record<string, unknown>>(`tokens/${staleId}.json`))!;
+    tok.expiresAt = new Date(Date.now() - 1000).toISOString();
+    tx.put(`tokens/${staleId}.json`, tok);
+  });
+
+  // Only the unexpired tokens for this repository or all repositories.
+  page = await tara.get('/tara/tok-a/settings');
+  assert.match(page.text, /for-a/);
+  assert.match(page.text, /global/);
+  assert.doesNotMatch(page.text, /for-b|stale/);
+  const forA = (await env.svc.tokens.listForUser(owner.id)).find((t) => t.name === 'for-a')!;
+
+  // A one-time password from here also leads back.
+  const otp = await tara.post(`/settings/tokens/${forA.id}/otp`, { returnRepo: a.id });
+  assert.match(otp.text, /<p class="otp">\d{4} \d{4}<\/p>/);
+  assert.match(otp.text, /href="\/tara\/tok-a\/settings"/);
+  page = await tara.get('/tara/tok-a/settings');
+  assert.match(page.text, /One-time password valid until/);
+
+  const revoked = await tara.post(`/settings/tokens/${forA.id}/revoke`, { returnRepo: a.id });
+  assert.equal(revoked.res.headers.get('location'), '/tara/tok-a/settings');
+  assert.doesNotMatch((await tara.get('/tara/tok-a/settings')).text, /for-a/);
+});
+
 test('forms without CSRF token are rejected', async () => {
   const alice = new Browser(env);
   await alice.login('alice@example.com');

@@ -3,11 +3,12 @@ import { setCookie } from 'hono/cookie';
 import { type AppEnv, type Page, type Services, formFields, isSecure, requireUser, setFlash } from './app.ts';
 import { LANG_COOKIE } from '../auth/session.ts';
 import { LANGUAGES, languageName } from '../i18n/index.ts';
-import { VALIDITY_MONTHS, OTP_LIFETIME_DAYS, isExpired, type IssuedToken } from '../services/tokens.ts';
+import { VALIDITY_MONTHS, OTP_LIFETIME_DAYS, type IssuedToken } from '../services/tokens.ts';
 import { type AccessToken, type Repo, type User, type UserTheme, contactEmailOf, USER_THEMES } from '../db/models.ts';
 import { MAX_DESCRIPTION, isValidEmail } from '../services/users.ts';
-import { html, type Html } from '../views/html.ts';
-import { csrfField, formDayOrNever, layout, localTime, storageUsage, tHtml } from '../views/layout.ts';
+import { html, urlPath, type Html } from '../views/html.ts';
+import { csrfField, layout, localTime, storageUsage, tHtml } from '../views/layout.ts';
+import { returnRepoField, tokenTable } from '../views/tokens.ts';
 import { ServiceError } from '../services/context.ts';
 import type { LimitStatus } from '../services/limits.ts';
 
@@ -78,41 +79,24 @@ function verifyPage(page: Page, user: User, email: string, code: string): string
 </section>`);
 }
 
-function tokenScope(page: Page, token: AccessToken, repos: Map<string, Repo>): string {
-  if (!token.repoId) return page.t('tokens.scope_all');
-  return repos.get(token.repoId)?.name ?? page.t('tokens.scope_deleted');
-}
-
 // The scope selector defaults to `selectedRepoId` (the most recently
 // updated repository): a token limited to one repository is the safer
-// choice for most users.
-function tokensPage(page: Page, user: User, tokens: AccessToken[], repos: Repo[], selectedRepoId: string | null): string {
+// choice for most users. `returnRepo` is set when the form was opened
+// from the settings of that repository, which the user returns to.
+function tokensPage(page: Page, user: User, tokens: AccessToken[], repos: Repo[], selectedRepoId: string | null, returnRepo: string | null): string {
   const { t } = page;
   const repoMap = new Map(repos.map((r) => [r.id, r]));
-  const now = Date.now();
   return layout(page, t('nav.tokens'), html`<h1>${t('nav.tokens')}</h1>
 ${settingsNav(page, '/settings/tokens')}
 <p class="muted">${t('tokens.intro')}</p>
 <section class="card">
 <h2>${t('tokens.existing')}</h2>
-${tokens.length === 0 ? html`<p class="muted">${t('tokens.none')}</p>` : html`<div class="table-wrap"><table>
-  <thead><tr><th>${t('field.name')}</th><th>${t('tokens.scope')}</th><th>${t('tokens.access')}</th><th>${t('tokens.created')}</th><th>${t('tokens.expires')}</th><th></th></tr></thead>
-  <tbody>${tokens.map((tok) => html`<tr class="${isExpired(tok, now) ? 'expired' : ''}">
-    <td><strong>${tok.name}</strong>
-      ${tok.otp && Date.parse(tok.otp.expiresAt) > now ? html`<br><span class="badge">${tHtml(page, 'tokens.otp_pending', { date: localTime(page, tok.otp.expiresAt) })}</span>` : ''}</td>
-    <td>${tokenScope(page, tok, repoMap)}</td>
-    <td>${tok.access === 'write' ? t('tokens.read_write') : t('tokens.read_only')}</td>
-    <td>${localTime(page, tok.createdAt)}</td>
-    <td>${isExpired(tok, now) ? html`<span class="badge badge-warn">${t('tokens.expired')}</span>` : formDayOrNever(page, tok.expiresAt)}</td>
-    <td class="actions">
-      ${isExpired(tok, now) ? '' : html`<form method="post" action="/settings/tokens/${tok.id}/otp" class="inline"${otpConfirm(page, tok, now)}>${csrfField(page)}<button class="btn btn-small btn-secondary">${t('tokens.new_otp')}</button></form>`}
-      <form method="post" action="/settings/tokens/${tok.id}/revoke" class="inline" data-confirm="${t('tokens.revoke_confirm')}">${csrfField(page)}<button class="btn btn-small btn-danger">${t('tokens.revoke')}</button></form>
-    </td></tr>`)}</tbody></table></div>`}
+${tokens.length === 0 ? html`<p class="muted">${t('tokens.none')}</p>` : tokenTable(page, tokens, repoMap)}
 </section>
-<section class="card">
+<section class="card" id="create">
 <h2>${t('tokens.create')}</h2>
 <form method="post" action="/settings/tokens" class="stack">
-  ${csrfField(page)}
+  ${csrfField(page)}${returnRepoField(returnRepo)}
   <label>${t('field.name')}<input type="text" name="name" required maxlength="100" placeholder="${t('tokens.name_placeholder')}"></label>
   <label>${t('tokens.scope')}<select name="repoId">
     <option value="">${t('tokens.scope_all')}</option>
@@ -133,16 +117,7 @@ ${tokens.length === 0 ? html`<p class="muted">${t('tokens.none')}</p>` : html`<d
 </section>`);
 }
 
-// Asking for a one-time password is harmless unless it replaces the
-// token value (old tokens) or a pending password.
-function otpConfirm(page: Page, tok: AccessToken, now: number): Html {
-  const { t } = page;
-  if (!tok.encryptedValue) return html` data-confirm="${t('tokens.otp_confirm')}"`;
-  if (tok.otp && Date.parse(tok.otp.expiresAt) > now) return html` data-confirm="${t('tokens.otp_replace_confirm')}"`;
-  return html``;
-}
-
-function issuedPage(page: Page, svc: Services, user: User, issued: IssuedToken, repo: Repo | null): string {
+function issuedPage(page: Page, svc: Services, user: User, issued: IssuedToken, repo: Repo | null, done: string): string {
   const { t } = page;
   const base = svc.ctx.config.baseUrl;
   const advanced = user.prefs.advancedMode;
@@ -167,11 +142,18 @@ function issuedPage(page: Page, svc: Services, user: User, issued: IssuedToken, 
   ${advanced ? html`<p>${t('tokens.usage_git')}</p>
   <pre class="mono">git clone ${cloneUrl.replace('://', `://${user.handle}:TOKEN@`)}</pre>
   <p class="muted">${t('tokens.usage_password')}</p>` : html`<p>${t('tokens.usage_simple')}</p>`}` : ''}
-  <p><a class="btn" href="/settings/tokens">${t('action.done')}</a></p>
+  <p><a class="btn" href="${done}">${t('action.done')}</a></p>
 </section>`);
 }
 
 export function registerSettingsRoutes(app: Hono<AppEnv>, svc: Services): void {
+  // Where the token routes lead back to: the settings of a repository of
+  // the user when the action started there, the token page otherwise.
+  const tokensDone = async (user: User, returnRepo: string | undefined): Promise<string> => {
+    const repo = returnRepo ? await svc.repos.getById(returnRepo) : null;
+    return repo && repo.ownerId === user.id ? urlPath(user.handle, repo.name, 'settings') : '/settings/tokens';
+  };
+
   app.get('/settings', async (c) => {
     const user = requireUser(c);
     return c.html(profilePage(c.var.page, user, await svc.limits.status(user)));
@@ -248,7 +230,10 @@ export function registerSettingsRoutes(app: Hono<AppEnv>, svc: Services): void {
     const updated = await Promise.all(repos.map((r) => svc.repos.lastUpdated(r)));
     let newest = -1;
     for (let i = 0; i < repos.length; i++) if (newest < 0 || updated[i] > updated[newest]) newest = i;
-    return c.html(tokensPage(c.var.page, user, tokens, repos, newest < 0 ? null : repos[newest].id));
+    // Opened from the settings of a repository: that one is preselected.
+    const from = repos.find((r) => r.id === c.req.query('repo'));
+    const selected = from ? from.id : newest < 0 ? null : repos[newest].id;
+    return c.html(tokensPage(c.var.page, user, tokens, repos, selected, from ? from.id : null));
   });
 
   app.post('/settings/tokens', async (c) => {
@@ -264,21 +249,23 @@ export function registerSettingsRoutes(app: Hono<AppEnv>, svc: Services): void {
       withOtp: f.otp === '1',
     }, repo);
     c.header('Cache-Control', 'no-store');
-    return c.html(issuedPage(c.var.page, svc, user, issued, repo));
+    return c.html(issuedPage(c.var.page, svc, user, issued, repo, await tokensDone(user, f.returnRepo)));
   });
 
   app.post('/settings/tokens/:id/revoke', async (c) => {
     const user = requireUser(c);
+    const f = await formFields(c);
     await svc.tokens.revoke(user, c.req.param('id'));
     setFlash(c, 'ok', 'token_revoked');
-    return c.redirect('/settings/tokens');
+    return c.redirect(await tokensDone(user, f.returnRepo));
   });
 
   app.post('/settings/tokens/:id/otp', async (c) => {
     const user = requireUser(c);
+    const f = await formFields(c);
     const issued = await svc.tokens.issueOtp(user, c.req.param('id'));
     const repo = issued.token.repoId ? await svc.repos.getById(issued.token.repoId) : null;
     c.header('Cache-Control', 'no-store');
-    return c.html(issuedPage(c.var.page, svc, user, issued, repo));
+    return c.html(issuedPage(c.var.page, svc, user, issued, repo, await tokensDone(user, f.returnRepo)));
   });
 }
