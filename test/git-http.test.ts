@@ -4,6 +4,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { serve, type ServerType } from '@hono/node-server';
 import { Browser, adminApi, setup, type TestEnv } from './helpers.ts';
@@ -175,5 +176,31 @@ test('push is refused when the quota or time limit is exceeded; clone still work
   assert.match(err, /time limit expired/);
 
   await setLimits({ writableUntil: null });
+  await git(['push', '-q', 'origin', 'main'], work);
+});
+
+test('a push cannot add more than the remaining storage quota', async () => {
+  const setQuota = (bytes: number | null) => env.svc.ctx.store.transact('Set quota', async (tx) => {
+    const u = (await tx.get<User>(`users/${owner.id}.json`))!;
+    tx.put(`users/${owner.id}.json`, { ...u, storageQuotaMb: bytes === null ? null : bytes / (1024 * 1024) });
+  });
+  const dir = mkdtempSync(join(env.dir, 'w-'));
+  await git(['clone', '-q', url('secret', rwToken), 'repo'], dir);
+  const work = join(dir, 'repo');
+  // Random data does not compress: the pack is about as large as the file.
+  writeFileSync(join(work, 'big.bin'), randomBytes(2 * 1024 * 1024));
+  await git(['add', 'big.bin'], work);
+  await git(['commit', '-qm', 'Big file'], work);
+
+  const before = await env.svc.limits.usedBytes(owner.id);
+  await setQuota(before + 256 * 1024);
+  const err = await gitFails(['push', '-q', 'origin', 'main'], work);
+  assert.match(err, /maximum allowed size|too large|quota/i);
+  const repo = await env.svc.repos.getByName(owner, 'secret');
+  const g = await env.svc.repos.open(repo!);
+  assert.equal(await g.resolveRef('refs/heads/main'), (await git(['rev-parse', 'origin/main'], work)).trim());
+  assert.ok((await env.svc.limits.usedBytes(owner.id)) < before + 256 * 1024);
+
+  await setQuota(null);
   await git(['push', '-q', 'origin', 'main'], work);
 });

@@ -14,6 +14,11 @@ import { tokenAllows, type TokenAuth } from '../services/tokens.ts';
 
 const GIT_PATH_RE = /^\/([^/]+)\/([^/]+?)(?:\.git)?\/(info\/refs|git-upload-pack|git-receive-pack)$/;
 const SERVICES = new Set(['git-upload-pack', 'git-receive-pack']);
+const MB = 1024 * 1024;
+// Fetch requests carry only ref negotiation.
+const MAX_FETCH_REQUEST_BYTES = 64 * MB;
+// Push requests carry ref updates besides the pack.
+const PUSH_COMMAND_ALLOWANCE = MB;
 
 export function isGitRequestPath(path: string): boolean {
   return GIT_PATH_RE.test(path);
@@ -50,9 +55,13 @@ function gitEnv(c: Ctx): NodeJS.ProcessEnv {
   return env;
 }
 
-function gitArgs(service: string, repoPath: string, advertise: boolean): string[] {
+// maxPackBytes limits the pack a push may send (null: unlimited).
+function gitArgs(service: string, repoPath: string, advertise: boolean, maxPackBytes: number | null): string[] {
   const args = ['-c', 'core.hooksPath=/dev/null'];
-  if (service === 'git-receive-pack') args.push('-c', 'receive.fsckObjects=true', '-c', 'receive.denyDeleteCurrent=true');
+  if (service === 'git-receive-pack') {
+    args.push('-c', 'receive.fsckObjects=true', '-c', 'receive.denyDeleteCurrent=true');
+    if (maxPackBytes !== null) args.push('-c', `receive.maxInputSize=${maxPackBytes}`);
+  }
   args.push(service.slice(4), '--stateless-rpc');
   if (advertise) args.push('--advertise-refs');
   args.push(repoPath);
@@ -98,16 +107,26 @@ export function registerGitRoutes(app: Hono<AppEnv>, svc: Services): void {
         : c.text('Repository not found\n', 404);
     }
 
+    // A push may not add more than the remaining storage quota.
+    let maxPackBytes: number | null = null;
     if (write) {
-      const { blockedBy } = await svc.limits.status(owner);
+      const { blockedBy, storageQuotaMb, usedBytes } = await svc.limits.status(owner);
       if (blockedBy === 'quota_exceeded') return c.text('Storage quota exceeded: the repository is read-only\n', 403);
       if (blockedBy === 'time_limit_expired') return c.text('Account time limit expired: the repository is read-only\n', 403);
+      if (storageQuotaMb !== null) maxPackBytes = Math.max(1, Math.floor(storageQuotaMb * MB - usedBytes));
+    }
+    const maxBody = write
+      ? (maxPackBytes === null ? null : maxPackBytes + PUSH_COMMAND_ALLOWANCE)
+      : MAX_FETCH_REQUEST_BYTES;
+    const length = Number(c.req.header('Content-Length'));
+    if (maxBody !== null && Number.isFinite(length) && length > maxBody) {
+      return c.text(write ? 'Storage quota exceeded: the push is too large\n' : 'Request too large\n', 413);
     }
 
     const repoPath = svc.ctx.repoPath(repo.id);
     const env = gitEnv(c);
     const advertise = action === 'info/refs';
-    const child = spawn(svc.ctx.config.gitBinary, gitArgs(service, repoPath, advertise), { env, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(svc.ctx.config.gitBinary, gitArgs(service, repoPath, advertise, maxPackBytes), { env, stdio: ['pipe', 'pipe', 'pipe'] });
     child.stderr.on('data', (d: Buffer) => console.error(`[git ${service}] ${d.toString().trim()}`));
     child.on('error', (err) => console.error(`[git ${service}] ${err.message}`));
 
@@ -125,9 +144,12 @@ export function registerGitRoutes(app: Hono<AppEnv>, svc: Services): void {
       return new Response(body, { status: 200, headers });
     }
 
+    // Both the transferred and the decompressed size are limited.
     let input: ReadableStream<Uint8Array> | null = c.req.raw.body;
+    if (input && maxBody !== null) input = input.pipeThrough(sizeLimit(maxBody));
     if (input && (c.req.header('Content-Encoding') ?? '').toLowerCase() === 'gzip') {
       input = input.pipeThrough(new DecompressionStream('gzip') as unknown as ReadableWritablePair<Uint8Array, Uint8Array>);
+      if (maxBody !== null) input = input.pipeThrough(sizeLimit(maxBody));
     }
     if (input) {
       const src = Readable.fromWeb(input as import('node:stream/web').ReadableStream);
@@ -139,6 +161,18 @@ export function registerGitRoutes(app: Hono<AppEnv>, svc: Services): void {
     child.stdin.on('error', () => undefined);
     headers['Content-Type'] = `application/x-${service}-result`;
     return new Response(Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>, { status: 200, headers });
+  });
+}
+
+// Passes a stream through, failing once it exceeds max bytes.
+function sizeLimit(max: number): TransformStream<Uint8Array, Uint8Array> {
+  let total = 0;
+  return new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      total += chunk.byteLength;
+      if (total > max) controller.error(new Error('request body too large'));
+      else controller.enqueue(chunk);
+    },
   });
 }
 
