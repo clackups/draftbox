@@ -11,6 +11,7 @@ import { sign, unsign } from '../src/auth/session.ts';
 import { isValidEmail, normalizeDescription, normalizeHomepage } from '../src/services/users.ts';
 import { idTokenClaims } from '../src/auth/oauth.ts';
 import { sanitizeHtml } from '../src/util/sanitize.ts';
+import { safeNext } from '../src/http/app.ts';
 
 test('diffLines finds insertions and deletions', () => {
   const ops = diffLines('a\nb\nc\n', 'a\nB\nc\nd\n')!;
@@ -138,4 +139,15 @@ test('footer HTML sanitizer keeps safe markup only', () => {
   assert.equal(sanitizeHtml('<span>open'), '<span>open</span>');
   assert.equal(sanitizeHtml('1 < 2 <!-- c --> "q"'), '1 &lt; 2  "q"');
   assert.equal(sanitizeHtml('<a title="a&quot;b" href=\'/p?x=1&y=2\'>t</a>'), '<a title="a&quot;b" href="/p?x=1&amp;y=2">t</a>');
+});
+
+test('safeNext accepts only paths on the same site', () => {
+  assert.equal(safeNext('/alice/notes?ref=main#top'), '/alice/notes?ref=main#top');
+  assert.equal(safeNext('/'), '/');
+  assert.equal(safeNext('/alice/notes/blob/my notes.md'), '/alice/notes/blob/my%20notes.md');
+  for (const bad of [undefined, '', 'https://evil.example', '//evil.example', '/\\evil.example',
+    '/\t/evil.example', '/\n/evil.example', '/..//evil.example', '/./\t/evil.example', '\\\\evil.example',
+    'javascript:alert(1)']) {
+    assert.equal(safeNext(bad), '/', String(bad));
+  }
 });

@@ -224,8 +224,20 @@ export function requireAdmin(c: Ctx): User {
   return user;
 }
 
-// Only local paths are accepted as post-login redirect targets.
+// Only local paths are accepted as post-login redirect targets. Browsers
+// drop tabs and newlines from URLs and treat backslashes as slashes, so
+// "/\t/evil.example" would lead to another site: control characters and
+// backslashes are refused, and the normalized result must be a path on
+// the same origin (dot segments can turn "/..//x" into "//x").
 export function safeNext(next: string | undefined): string {
-  if (!next || !next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\')) return '/';
-  return next;
+  if (!next || !next.startsWith('/') || /[\x00-\x1f\x7f\\]/.test(next)) return '/';
+  let url: URL;
+  try {
+    url = new URL(next, 'http://draftbox.invalid');
+  } catch {
+    return '/';
+  }
+  const out = url.pathname + url.search + url.hash;
+  if (url.origin !== 'http://draftbox.invalid' || out.startsWith('//')) return '/';
+  return out;
 }
