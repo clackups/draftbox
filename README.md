@@ -15,7 +15,8 @@ Features
   "public" means. Public repositories can be browsed and cloned without
   an account.
 * In-browser file editor with Markdown preview, file upload, rename and
-  delete, version history with changes, and tags. Advanced mode adds
+  delete, version history with changes, and tags. Fountain screenplays
+  (`.fountain`) are shown and previewed in screenplay format. Advanced mode adds
   branches; simple mode always works on `main`.
 * Git smart HTTP (protocol v0 and v2) with access tokens: global or
   per-repository, read-write or read-only, permanent or valid for

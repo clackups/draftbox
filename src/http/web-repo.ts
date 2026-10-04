@@ -5,10 +5,11 @@ import { DEFAULT_BRANCH, validFilePath } from '../services/repos.ts';
 import { isExpired } from '../services/tokens.ts';
 import { contactEmailOf, type Visibility } from '../db/models.ts';
 import { isMarkdownPath, renderMarkdown, type LinkResolver } from '../util/markdown.ts';
+import { isFountainPath, renderFountain } from '../util/fountain.ts';
 import { diffLines, hunks } from '../util/diff.ts';
 import { urlPath } from '../views/html.ts';
 import {
-  type FileChange, type RepoCtx, blobPage, branchesPage, commitPage, commitsPage, editPage, emptyRepoPage,
+  type DocFormat, type FileChange, type RepoCtx, blobPage, branchesPage, commitPage, commitsPage, editPage, emptyRepoPage,
   explorePage, homePage, landingPage, newRepoPage, profilePage, repoSettingsPage, repoUrl, tagsPage, treePage,
   uploadPage, withRef,
 } from '../views/repo.ts';
@@ -48,6 +49,13 @@ function subPath(c: Ctx, marker: string): string {
   } catch {
     throw new ServiceError('not_found', 404);
   }
+}
+
+// Formatted view of a text file, for the formats that have one.
+function renderDocument(path: string, text: string, links?: LinkResolver): { format: DocFormat; html: string } | null {
+  if (isMarkdownPath(path)) return { format: 'markdown', html: renderMarkdown(text, links) };
+  if (isFountainPath(path)) return { format: 'fountain', html: renderFountain(text) };
+  return null;
 }
 
 function resolver(rc: RepoCtx, dir: string): LinkResolver {
@@ -150,10 +158,13 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     }
   });
 
+  // Editor preview; the file name selects the format (Markdown by default).
   app.post('/preview', async (c) => {
     requireUser(c);
     const f = await formFields(c);
-    return c.json({ html: renderMarkdown(normalizeNewlines(f.content ?? '').slice(0, MAX_EDIT_BYTES)) });
+    const text = normalizeNewlines(f.content ?? '').slice(0, MAX_EDIT_BYTES);
+    const doc = renderDocument(f.name ?? '', text);
+    return c.json(doc ?? { format: 'markdown', html: renderMarkdown(text) });
   });
 
   app.get('/:owner', async (c) => {
@@ -204,7 +215,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     const data = await rc.git.readBlob(found.entry.oid);
     const text = asText(data);
     const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
-    const rendered = text !== null && isMarkdownPath(path) ? renderMarkdown(text, resolver(rc, dir)) : null;
+    const rendered = text !== null ? renderDocument(path, text, resolver(rc, dir)) : null;
     return c.html(blobPage(rc, { path, size: data.length, text, rendered, showSource: c.req.query('source') === '1' }));
   });
 

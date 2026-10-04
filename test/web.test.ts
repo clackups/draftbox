@@ -790,3 +790,28 @@ test('anonymous requests cannot send large bodies', async () => {
   assert.equal(r.res.status, 413);
   assert.equal((await anon.post('/logout', {})).res.status, 302);
 });
+
+test('fountain screenplays are shown formatted', async () => {
+  await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'wes@example.com' });
+  const wes = new Browser(env);
+  await wes.login('wes@example.com');
+  await wes.post('/new', { name: 'film', description: '', visibility: 'private' });
+  const script = 'INT. OFFICE - NIGHT\n\nWES\n(tired)\nOne more draft.\n';
+  let r = await wes.post('/wes/film/new', { ref: 'main', base: '', dir: '', name: 'pilot.fountain', content: script, message: '' });
+  assert.equal(r.res.status, 302);
+  let page = await wes.get('/wes/film/blob/pilot.fountain');
+  assert.match(page.text, /<div class="fountain pad"><div class="screenplay">/);
+  assert.match(page.text, /<div class="fn-scene">INT. OFFICE - NIGHT<\/div>/);
+  assert.match(page.text, /<div class="fn-character">WES<\/div>/);
+  page = await wes.get('/wes/film/blob/pilot.fountain?source=1');
+  assert.doesNotMatch(page.text, /fn-scene/);
+  // The editor offers a preview, rendered as Fountain.
+  page = await wes.get('/wes/film/edit/pilot.fountain');
+  assert.match(page.text, /<div class="edittabs" >/);
+  r = await wes.post('/preview', { name: 'pilot.fountain', content: script });
+  const body = JSON.parse(r.text) as { format: string; html: string };
+  assert.equal(body.format, 'fountain');
+  assert.match(body.html, /fn-dialogue/);
+  r = await wes.post('/preview', { name: 'notes.md', content: '# Hi' });
+  assert.equal((JSON.parse(r.text) as { format: string }).format, 'markdown');
+});

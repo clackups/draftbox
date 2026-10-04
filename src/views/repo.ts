@@ -142,11 +142,13 @@ git push -u origin ${rc.ref}</pre>` : html`<p class="muted">${t('repo.empty_visi
 </section>`);
 }
 
+export type DocFormat = 'markdown' | 'fountain';
+
 export interface BlobView {
   path: string;
   size: number;
   text: string | null;
-  rendered: string | null;
+  rendered: { format: DocFormat; html: string } | null;
   showSource: boolean;
 }
 
@@ -157,7 +159,7 @@ export function blobPage(rc: RepoCtx, b: BlobView): string {
   if (b.text === null) {
     content = html`<p class="muted pad">${t('repo.binary_file', { size: b.size })}</p>`;
   } else if (b.rendered !== null && !b.showSource) {
-    content = html`<div class="markdown pad">${raw(b.rendered)}</div>`;
+    content = html`<div class="${b.rendered.format} pad">${raw(b.rendered.html)}</div>`;
   } else {
     const lines = b.text.split('\n');
     if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
@@ -196,7 +198,7 @@ export interface EditView {
 export function editPage(rc: RepoCtx, v: EditView): string {
   const { t } = rc.page;
   const action = v.isNew ? repoUrl(rc, 'new') : repoUrl(rc, 'edit', v.path);
-  const isMd = v.isNew || /\.(md|markdown)$/i.test(v.path);
+  const hasPreview = v.isNew || /\.(md|markdown|fountain)$/i.test(v.path);
   return repoLayout(rc, 'files', `${v.isNew ? t('repo.new_file') : v.path} - ${rc.repo.name}`, html`
 ${v.error ? html`<p class="flash flash-error">${t('error.' + v.error)}</p>` : ''}
 <form method="post" action="${action}" class="card stack editor" data-editor>
@@ -208,12 +210,12 @@ ${v.error ? html`<p class="flash flash-error">${t('error.' + v.error)}</p>` : ''
     <input type="hidden" name="dir" value="${v.dir}">
     <input type="text" name="name" class="mono" required value="${v.isNew ? v.path : v.path.slice(v.dir ? v.dir.length + 1 : 0)}" placeholder="${t('repo.file_name_placeholder')}"></div>
     ${v.isNew ? '' : html`<small class="muted">${t('repo.rename_help')}</small>`}</label>
-  <div class="edittabs" ${isMd ? '' : 'hidden'}>
+  <div class="edittabs" ${hasPreview ? '' : 'hidden'}>
     <button type="button" class="tab active" data-tab="write">${t('repo.write')}</button>
     <button type="button" class="tab" data-tab="preview">${t('repo.preview')}</button>
   </div>
   <textarea name="content" rows="24" class="mono" spellcheck="true">${v.content}</textarea>
-  <div class="markdown preview" hidden></div>
+  <div class="preview" hidden></div>
   <label>${t('repo.commit_message')}<input type="text" name="message" value="${v.message}" placeholder="${t('repo.commit_message_placeholder')}"></label>
   <div><button class="btn">${t('action.save')}</button>
     <a class="btn btn-secondary" href="${v.isNew ? withRef(rc, v.dir ? repoUrl(rc, 'tree', v.dir) : repoUrl(rc)) : withRef(rc, repoUrl(rc, 'blob', v.path))}">${t('action.cancel')}</a></div>

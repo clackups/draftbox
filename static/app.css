@@ -299,7 +299,41 @@ pre { background: var(--code-bg); padding: 0.7rem 0.9rem; border-radius: 6px; ov
 .markdown pre code { background: none; padding: 0; }
 .markdown h1, .markdown h2 { border-bottom: 1px solid var(--border); padding-bottom: 0.2em; }
 
+/* Rendered Fountain screenplay: a page of about 60 characters, with
+   character cues, parentheticals and dialogue indented as in print. */
+.screenplay { font-family: "Courier Prime", "Courier New", Courier, monospace; font-size: 1rem; line-height: 1.25;
+  max-width: 62ch; margin: 0 auto; overflow-wrap: break-word; }
+.screenplay > div, .fn-speech > div { white-space: pre-wrap; }
+.fn-title-page { min-height: 24rem; display: flex; flex-direction: column; justify-content: space-between;
+  border-bottom: 1px dashed var(--border); margin-bottom: 2rem; padding-bottom: 1.5rem; }
+.fn-title-center { text-align: center; padding-top: 4rem; }
+.fn-title { font-weight: 700; text-transform: uppercase; margin-bottom: 2rem; }
+.fn-credit, .fn-author, .fn-source { margin-bottom: 1rem; }
+.fn-title-meta > div { margin-top: 1rem; }
+.fn-scene { font-weight: 700; text-transform: uppercase; margin: 1.5rem 0 1rem; display: flex; gap: 1ch; }
+.fn-scene-number { color: var(--muted); }
+.fn-action, .fn-lyrics, .fn-centered { margin: 1rem 0; }
+.fn-lyrics { font-style: italic; }
+.fn-centered { text-align: center; }
+.fn-transition { text-align: right; text-transform: uppercase; margin: 1rem 0; }
+.fn-speech { margin: 1rem 0; }
+.fn-character { margin-left: 35%; text-transform: uppercase; }
+.fn-parenthetical { margin-left: 25%; max-width: 40%; }
+.fn-dialogue { margin-left: 17%; max-width: 58%; }
+.fn-dual { display: grid; grid-template-columns: 1fr 1fr; gap: 2ch; }
+.fn-dual .fn-character { margin-left: 25%; }
+.fn-dual .fn-parenthetical { margin-left: 12%; max-width: none; }
+.fn-dual .fn-dialogue { margin-left: 0; max-width: none; }
+.fn-section, .fn-synopsis { color: var(--muted); font-family: inherit; margin: 1rem 0; }
+.fn-section { font-weight: 700; }
+.fn-synopsis { font-style: italic; }
+.fn-note { color: var(--muted); background: var(--code-bg); border-radius: 4px; padding: 0 0.3ch; }
+.fn-page-break { border: 0; border-top: 1px dashed var(--border); margin: 2rem 0; }
+
 @media (max-width: 640px) {
+  .fn-character { margin-left: 25%; }
+  .fn-parenthetical { margin-left: 15%; max-width: 70%; }
+  .fn-dialogue { margin-left: 8%; max-width: 84%; }
   .mainnav { margin-left: 0; width: 100%; }
   .container { padding: 0.6rem; }
   th, td { padding: 0.4rem; }

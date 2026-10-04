@@ -126,7 +126,8 @@
     });
   }
 
-  // Markdown editor: write/preview tabs and unsaved-changes warning.
+  // Text editor: write/preview tabs (Markdown, Fountain) and
+  // unsaved-changes warning.
   var editor = document.querySelector('form[data-editor]');
   if (editor) {
     var textarea = editor.querySelector('textarea[name=content]');
@@ -154,10 +155,14 @@
           var body = new URLSearchParams();
           body.set('_csrf', csrf);
           body.set('content', textarea.value);
+          body.set('name', editor.querySelector('input[name=name]').value);
           preview.innerHTML = '';
           fetch('/preview', { method: 'POST', body: body, credentials: 'same-origin' })
             .then(function (r) { return r.json(); })
-            .then(function (j) { preview.innerHTML = j.html; });
+            .then(function (j) {
+              preview.className = 'preview ' + (j.format === 'fountain' ? 'fountain' : 'markdown');
+              preview.innerHTML = j.html;
+            });
           textarea.hidden = true;
           preview.hidden = false;
         } else {
