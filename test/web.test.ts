@@ -759,3 +759,26 @@ test('a session cookie stops working after logging out', async () => {
   assert.match(res.res.headers.get('location') ?? '', /^\/login/);
   assert.equal((await other.get('/settings')).res.status, 200);
 });
+
+test('a released user name is kept for its previous owner', async () => {
+  for (const email of ['rita@example.com', 'sam@example.com']) {
+    await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email });
+  }
+  const rita = new Browser(env);
+  await rita.login('rita@example.com');
+  const ritaUser = (await env.svc.users.getByEmail('rita@example.com'))!;
+  await env.svc.users.updateProfile(ritaUser.id, { handle: 'rita-new' });
+  await new Browser(env).login('sam@example.com');
+  const sam = (await env.svc.users.getByEmail('sam@example.com'))!;
+  await assert.rejects(env.svc.users.updateProfile(sam.id, { handle: 'rita' }), /handle_taken/);
+  // The previous owner may take it back.
+  await env.svc.users.updateProfile(ritaUser.id, { handle: 'rita' });
+  assert.equal((await env.svc.users.getByHandle('rita'))?.id, ritaUser.id);
+
+  // A deleted account's name is not given to a new registration either.
+  await env.svc.users.delete(ritaUser.id, 'test');
+  await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'rita@other.example' });
+  await new Browser(env).login('rita@other.example');
+  assert.equal((await env.svc.users.getByEmail('rita@other.example'))?.handle, 'rita-2');
+  await assert.rejects(env.svc.users.updateProfile(sam.id, { handle: 'rita' }), /handle_taken/);
+});

@@ -19,6 +19,26 @@ const RESERVED_HANDLES = new Set([
 ]);
 
 const SESSION_ID_RE = /^[0-9a-f]{32}$/;
+// A handle given up by renaming or deleting an account cannot be taken
+// by another account for this long, so that links and clone URLs do not
+// silently lead to someone else's repositories.
+export const HANDLE_RETENTION_DAYS = 180;
+
+interface RetiredHandle {
+  userId: string;
+  until: string;
+}
+
+// Whether another account than userId holds a recent claim on the handle.
+async function handleRetiredFor(view: ReadView, handle: string, userId: string | null): Promise<boolean> {
+  const r = await view.get<RetiredHandle>(`retired-handles/${handle}.json`);
+  return r !== null && r.userId !== userId && Date.parse(r.until) > Date.now();
+}
+
+function retireHandle(tx: Tx, handle: string, userId: string): void {
+  const until = new Date(Date.now() + HANDLE_RETENTION_DAYS * 86400_000).toISOString();
+  tx.put(`retired-handles/${handle}.json`, { userId, until } satisfies RetiredHandle);
+}
 
 export const HANDLE_RE = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/;
 
@@ -189,7 +209,7 @@ export class UserService {
     if (RESERVED_HANDLES.has(base)) base = base + '-user';
     for (let i = 0; ; i++) {
       const candidate = i === 0 ? base : `${base}-${i + 1}`;
-      if (!(await tx.getText(`index/handle/${candidate}`))) return candidate;
+      if (!(await tx.getText(`index/handle/${candidate}`)) && !(await handleRetiredFor(tx, candidate, null))) return candidate;
     }
   }
 
@@ -204,8 +224,10 @@ export class UserService {
       if (patch.handle !== undefined && patch.handle !== user.handle) {
         const h = patch.handle.trim().toLowerCase();
         if (!HANDLE_RE.test(h) || RESERVED_HANDLES.has(h)) throw new ServiceError('invalid_handle');
-        if (await tx.getText(`index/handle/${h}`)) throw new ServiceError('handle_taken');
+        if (await tx.getText(`index/handle/${h}`) || await handleRetiredFor(tx, h, user.id)) throw new ServiceError('handle_taken');
         tx.delete(`index/handle/${user.handle}`);
+        retireHandle(tx, user.handle, user.id);
+        tx.delete(`retired-handles/${h}.json`);
         tx.putText(`index/handle/${h}`, user.id);
         user.handle = h;
       }
@@ -392,6 +414,7 @@ export class UserService {
       tx.delete(`index/email/${emailKey(user.email)}`);
       if (user.pendingContactEmail) tx.delete(`index/email-verify/${user.pendingContactEmail.codeHash}`);
       tx.delete(`index/handle/${user.handle}`);
+      retireHandle(tx, user.handle, user.id);
       tx.delete(`users/${userId}.json`);
     });
     for (const id of repoIds) {

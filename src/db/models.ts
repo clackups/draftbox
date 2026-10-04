@@ -10,6 +10,7 @@
 //   settings/branding.json               Branding
 //   settings/logo                        logo image (raw bytes)
 //   revoked-sessions/<sessionId>         expiry of a logged-out session
+//   retired-handles/<handle>.json        previous owner of a released handle
 //   index/email/<sha256(email)>          userId
 //   index/handle/<handle>                userId
 //   index/identity/<provider>/<sha256(subject)>  userId
