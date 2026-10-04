@@ -69,6 +69,9 @@ Without a `mail` section, messages are only written to the server log.
 Run behind a TLS-terminating reverse proxy; set `trustProxy` so that
 rate limiting sees client addresses.
 
+`staticCacheSeconds` (default 60) sets how long browsers may cache
+static files such as `app.js` and `app.css`.
+
 Using Git
 ---------
 

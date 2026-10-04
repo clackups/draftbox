@@ -45,7 +45,8 @@ export function registerStaticRoutes(app: Hono<AppEnv>, svc: Services): void {
     const name = c.req.param('name');
     const type = STATIC_FILES[name];
     if (!type) return c.notFound();
-    return c.body(staticFile(name) as Uint8Array<ArrayBuffer>, 200, { 'Content-Type': type, 'Cache-Control': 'public, max-age=3600' });
+    const maxAge = svc.ctx.config.staticCacheSeconds;
+    return c.body(staticFile(name) as Uint8Array<ArrayBuffer>, 200, { 'Content-Type': type, 'Cache-Control': `public, max-age=${maxAge}` });
   });
 
   app.get('/branding/theme.css', async (c) => {

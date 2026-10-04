@@ -307,6 +307,19 @@ test('blocking hides the user and ends sessions', async () => {
   assert.equal(await env.svc.users.getByEmail('bob@example.com'), null);
 });
 
+test('static files use the configured cache lifetime', async () => {
+  const res = await env.app.request('/static/app.js');
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('Cache-Control'), 'public, max-age=60');
+  const other = await setup({ staticCacheSeconds: 300 });
+  try {
+    const r = await other.app.request('/static/app.css');
+    assert.equal(r.headers.get('Cache-Control'), 'public, max-age=300');
+  } finally {
+    other.cleanup();
+  }
+});
+
 test('non-admins cannot reach administration', async () => {
   const alice = new Browser(env);
   await alice.login('alice@example.com');

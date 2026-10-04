@@ -36,5 +36,6 @@
 
   "defaultLanguage": "en",
   "sessionMaxAgeDays": 30,
+  "staticCacheSeconds": 60,
   "gitBinary": "git"
 }

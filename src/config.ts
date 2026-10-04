@@ -75,6 +75,8 @@ export interface Config {
   sessionMaxAgeDays: number;
   // Trust X-Forwarded-For for client addresses (set behind a reverse proxy).
   trustProxy: boolean;
+  // Browser cache lifetime of static files (app.js, app.css, ...), seconds.
+  staticCacheSeconds: number;
 }
 
 const DEFAULTS: Config = {
@@ -93,6 +95,7 @@ const DEFAULTS: Config = {
   defaultLanguage: 'en',
   sessionMaxAgeDays: 30,
   trustProxy: false,
+  staticCacheSeconds: 60,
 };
 
 export function loadConfig(path?: string): Config {
@@ -120,6 +123,11 @@ export function finalizeConfig(partial: Partial<Config>, env: Record<string, str
   if (env.DRAFTBOX_DATA_DIR) cfg.dataDir = env.DRAFTBOX_DATA_DIR;
   if (env.DRAFTBOX_BASE_URL) cfg.baseUrl = env.DRAFTBOX_BASE_URL;
   if (env.DRAFTBOX_SMTP_PASSWORD && cfg.mail.smtp) cfg.mail.smtp = { ...cfg.mail.smtp, password: env.DRAFTBOX_SMTP_PASSWORD };
+
+  if (!Number.isFinite(cfg.staticCacheSeconds) || cfg.staticCacheSeconds < 0) {
+    throw new Error('staticCacheSeconds must be a non-negative number');
+  }
+  cfg.staticCacheSeconds = Math.floor(cfg.staticCacheSeconds);
 
   cfg.baseUrl = cfg.baseUrl.replace(/\/+$/, '');
   cfg.admins.emails = cfg.admins.emails.map((e) => e.trim().toLowerCase());
