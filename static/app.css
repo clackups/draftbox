@@ -104,6 +104,7 @@ div.warning { margin: 0 0 1rem; }
 .mainnav { display: flex; align-items: center; gap: 1rem; margin-left: auto; flex-wrap: wrap; }
 .mainnav a { text-decoration: none; }
 .container { width: 100%; max-width: 1080px; margin: 0 auto; padding: 1rem; flex: 1; }
+.container.wide { max-width: 1600px; }
 .footer {
   display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem;
   padding: 1rem; color: var(--muted); border-top: 1px solid var(--border); font-size: 0.9em;
@@ -215,6 +216,9 @@ th, td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); text-a
 th { font-size: 0.85em; color: var(--muted); font-weight: 600; }
 tr:last-child td { border-bottom: none; }
 td.actions { white-space: nowrap; text-align: right; }
+/* Several buttons: wrap them rather than widening the users table. */
+table.users td.actions { white-space: normal; min-width: 11rem; }
+table.users td.actions > * { display: inline-block; margin: 0.15rem 0; white-space: nowrap; }
 tr.expired, tr.blocked { opacity: 0.6; }
 
 /* Repository */

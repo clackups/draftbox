@@ -83,7 +83,8 @@ function footer(page: Page): Html {
 </footer>`;
 }
 
-export function layout(page: Page, title: string, body: Html): string {
+// `wide` lets the content use more of large screens, for wide tables.
+export function layout(page: Page, title: string, body: Html, opts: { wide?: boolean } = {}): string {
   const theme = page.theme === 'auto' ? '' : page.theme;
   const flash = page.flash
     ? html`<div class="flash flash-${page.flash.kind}" role="status">${page.t(page.flash.key.startsWith('error.') ? page.flash.key : 'flash.' + page.flash.key)}</div>`
@@ -101,7 +102,7 @@ export function layout(page: Page, title: string, body: Html): string {
 </head>
 <body>
 ${header(page)}
-<main class="container">
+<main class="container${opts.wide ? ' wide' : ''}">
 ${flash}
 ${body}
 </main>

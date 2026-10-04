@@ -50,7 +50,7 @@ function usersPage(page: Page, svc: Services, users: Array<{ user: User; repos: 
     .filter(Boolean).join(', ') || t('admin.reg_closed');
   return layout(page, t('admin.users'), html`${adminNav(page, '/admin/users')}
 <p class="muted">${t('admin.registration_modes', { modes })}</p>
-<section class="card"><div class="table-wrap"><table>
+<section class="card"><div class="table-wrap"><table class="users">
 <thead><tr><th>${t('field.email')}</th><th>${t('field.handle')}</th><th>${t('field.name')}</th><th>${t('admin.registered')}</th><th>${t('admin.repos')}</th><th>${t('admin.storage')}</th><th>${t('admin.writable_until')}</th><th>${t('admin.status')}</th><th></th></tr></thead>
 <tbody>${users.map(({ user: u, repos, limits }) => html`<tr class="${u.blocked ? 'blocked' : ''}">
   <td>${u.email}</td><td><a href="/${u.handle}">${u.handle}</a></td><td>${u.name}</td>
@@ -64,7 +64,7 @@ function usersPage(page: Page, svc: Services, users: Array<{ user: User; repos: 
       <button class="btn btn-small btn-secondary">${u.blocked ? t('admin.unblock') : t('admin.block')}</button></form>
     <form method="post" action="/admin/users/${u.id}/delete" class="inline" data-confirm="${t('admin.delete_confirm', { email: u.email })}">${csrfField(page)}
       <button class="btn btn-small btn-danger">${t('action.delete')}</button></form>`}</td>
-</tr>`)}</tbody></table></div></section>`);
+</tr>`)}</tbody></table></div></section>`, { wide: true });
 }
 
 function userLimitsPage(page: Page, svc: Services, user: User, status: LimitStatus, error?: string): string {
