@@ -10,15 +10,22 @@
 //   where <key> is one of the configured adminApiKeys:
 //
 //   GET    /api/v1/admin/preregistrations
-//   POST   /api/v1/admin/preregistrations          {"email": "...", "note": "..."}
+//   POST   /api/v1/admin/preregistrations          {"email": "...", "note": "...",
+//                                                    "storageQuotaMb": 500, "timeLimitDays": 365}
 //   GET    /api/v1/admin/preregistrations/:email
 //   DELETE /api/v1/admin/preregistrations/:email
-//   POST   /api/v1/admin/invitations               {"note": "...", "expiresDays": 14}
+//   POST   /api/v1/admin/invitations               {"note": "...", "expiresDays": 14,
+//                                                    "storageQuotaMb": 500, "timeLimitDays": 365}
+//
+//   storageQuotaMb and timeLimitDays (counted from registration) are
+//   optional: when absent, the configured defaults apply; null or 0
+//   means unlimited.
 
 import type { Hono } from 'hono';
 import type { AppEnv, Ctx, Services } from './app.ts';
 import { ServiceError } from '../services/context.ts';
 import { safeEqual } from '../util/crypto.ts';
+import { parseLimitGrant } from '../services/limits.ts';
 
 // Fixed-window limiter for the one-time password endpoint: 8-digit
 // passwords must not be guessable by brute force.
@@ -110,7 +117,8 @@ export function registerApiRoutes(app: Hono<AppEnv>, svc: Services): void {
   app.post('/api/v1/admin/preregistrations', async (c) => {
     const body = await jsonBody(c);
     try {
-      const rec = await svc.prereg.add(String(body.email ?? ''), String(body.note ?? ''));
+      const limits = parseLimitGrant(body.storageQuotaMb, body.timeLimitDays);
+      const rec = await svc.prereg.add(String(body.email ?? ''), String(body.note ?? ''), limits);
       const existing = await svc.users.getByEmail(rec.email);
       return c.json({ preregistration: rec, registered: existing !== null }, 201);
     } catch (err) {
@@ -134,8 +142,15 @@ export function registerApiRoutes(app: Hono<AppEnv>, svc: Services): void {
   app.post('/api/v1/admin/invitations', async (c) => {
     const body = await jsonBody(c);
     const days = Number(body.expiresDays ?? 0);
-    const { invitation, code } = await svc.invites.create('api', String(body.note ?? ''), days > 0 ? Math.min(days, 365) : null);
-    return c.json({ id: invitation.id, link: svc.invites.link(code), expiresAt: invitation.expiresAt }, 201);
+    let limits;
+    try {
+      limits = parseLimitGrant(body.storageQuotaMb, body.timeLimitDays);
+    } catch (err) {
+      if (err instanceof ServiceError) return c.json({ error: err.code }, 400);
+      throw err;
+    }
+    const { invitation, code } = await svc.invites.create('api', String(body.note ?? ''), days > 0 ? Math.min(days, 365) : null, limits);
+    return c.json({ id: invitation.id, link: svc.invites.link(code), expiresAt: invitation.expiresAt, limits: invitation.limits ?? {} }, 201);
   });
 
   app.all('/api/*', (c) => c.json({ error: 'not_found' }, 404));

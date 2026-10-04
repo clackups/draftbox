@@ -2,7 +2,7 @@
 
 import type { Context } from './context.ts';
 import { ServiceError } from './context.ts';
-import type { Branding, Invitation, Preregistration, Theme } from '../db/models.ts';
+import type { Branding, Invitation, LimitGrant, Preregistration, Theme } from '../db/models.ts';
 import { DEFAULT_BRANDING } from '../db/models.ts';
 import { randomId, randomSecret, sha256hex } from '../util/crypto.ts';
 import { emailKey, findUsableInvitation, normalizeEmail } from './users.ts';
@@ -18,7 +18,7 @@ export class InvitationService {
     this.ctx = ctx;
   }
 
-  async create(createdBy: string, note: string, expiresDays: number | null): Promise<{ invitation: Invitation; code: string }> {
+  async create(createdBy: string, note: string, expiresDays: number | null, limits: LimitGrant = {}): Promise<{ invitation: Invitation; code: string }> {
     const code = randomSecret(24);
     const now = Date.now();
     const invitation: Invitation = {
@@ -29,6 +29,7 @@ export class InvitationService {
       expiresAt: expiresDays ? new Date(now + expiresDays * 86400_000).toISOString() : null,
       note: note.trim().slice(0, 200),
     };
+    if (Object.keys(limits).length > 0) invitation.limits = limits;
     await this.ctx.store.transact(`Create invitation ${invitation.id}`, async (tx) => {
       tx.put(`invitations/${invitation.id}.json`, invitation);
       tx.putText(`index/invite/${invitation.codeHash}`, invitation.id);
@@ -71,10 +72,11 @@ export class PreregistrationService {
     this.ctx = ctx;
   }
 
-  async add(email: string, note: string): Promise<Preregistration> {
+  async add(email: string, note: string, limits: LimitGrant = {}): Promise<Preregistration> {
     const e = normalizeEmail(email);
     if (!/^[^\s@]+@[^\s@]+$/.test(e)) throw new ServiceError('invalid_email');
     const rec: Preregistration = { email: e, createdAt: this.ctx.now(), note: note.trim().slice(0, 200) };
+    if (Object.keys(limits).length > 0) rec.limits = limits;
     await this.ctx.store.transact(`Pre-register ${e}`, async (tx) => {
       tx.put(`preregistrations/${emailKey(e)}.json`, rec);
     });

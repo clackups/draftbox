@@ -57,6 +57,57 @@ test('invitation link registers exactly one account', async () => {
   assert.equal((await carol.login('carol@example.com')).status, 403);
 });
 
+test('invitations and pre-registrations set the quota and time limit', async () => {
+  // Through the API: pre-registration with explicit limits.
+  assert.equal((await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'lim1@example.com', storageQuotaMb: -1 })).status, 400);
+  let r = await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'lim1@example.com', storageQuotaMb: 500, timeLimitDays: 30 });
+  assert.equal(r.status, 201);
+  const lim1 = new Browser(env);
+  await lim1.login('lim1@example.com');
+  let user = (await env.svc.users.getByEmail('lim1@example.com'))!;
+  assert.equal(user.storageQuotaMb, 500);
+  const until = Date.parse(user.writableUntil!) - Date.parse(user.createdAt);
+  assert.equal(until, 30 * 86400_000);
+  assert.deepEqual(env.svc.limits.effective(user), { storageQuotaMb: 500, writableUntil: user.writableUntil });
+
+  // Through the API: invitation with an unlimited quota (null) and the default time limit.
+  r = await adminApi(env, 'POST', '/api/v1/admin/invitations', { note: 'lim2', storageQuotaMb: null });
+  const { link, limits } = await r.json() as { link: string; limits: unknown };
+  assert.deepEqual(limits, { storageQuotaMb: null });
+  const lim2 = new Browser(env);
+  await lim2.get(new URL(link).pathname);
+  await lim2.login('lim2@example.com');
+  user = (await env.svc.users.getByEmail('lim2@example.com'))!;
+  assert.equal(user.storageQuotaMb, null);
+  assert.equal(user.writableUntil, undefined);
+  assert.deepEqual(env.svc.limits.effective(user), { storageQuotaMb: null, writableUntil: null });
+
+  // Through the admin pages; 0 means unlimited, empty means the default.
+  const admin = new Browser(env);
+  await admin.login(ADMIN_EMAIL);
+  await admin.get('/admin/preregistrations');
+  await admin.post('/admin/preregistrations', { email: 'lim3@example.com', note: '', storageQuotaMb: '', timeLimitDays: '0' });
+  const list = await admin.get('/admin/preregistrations');
+  assert.match(list.text, /default \/ unlimited/);
+  await admin.get('/admin/invitations');
+  const created = await admin.post('/admin/invitations', { note: 'lim4', days: '7', storageQuotaMb: '20', timeLimitDays: '90' });
+  assert.match(created.text, /20 MB \/ 90 days/);
+  const lim4Link = /value="([^"]+)" class="mono" id="invite-link"/.exec(created.text)![1];
+  const lim4 = new Browser(env);
+  await lim4.get(new URL(lim4Link).pathname);
+  await lim4.login('lim4@example.com');
+  user = (await env.svc.users.getByEmail('lim4@example.com'))!;
+  assert.equal(user.storageQuotaMb, 20);
+  assert.ok(user.writableUntil);
+
+  const lim3 = new Browser(env);
+  await lim3.login('lim3@example.com');
+  user = (await env.svc.users.getByEmail('lim3@example.com'))!;
+  assert.equal(user.storageQuotaMb, undefined);
+  assert.equal(user.writableUntil, null);
+  assert.deepEqual(env.svc.limits.effective(user), { storageQuotaMb: 100, writableUntil: null });
+});
+
 test('repositories: create, edit, history, tags and visibility', async () => {
   const alice = new Browser(env);
   await alice.login('alice@example.com');

@@ -1,9 +1,10 @@
 import type { Hono } from 'hono';
 import { type AppEnv, type Page, type Services, formFields, requireAdmin, setFlash } from './app.ts';
-import type { Branding, Invitation, Preregistration, Theme, User } from '../db/models.ts';
+import type { Branding, Invitation, LimitGrant, Preregistration, Theme, User } from '../db/models.ts';
 import { html, type Html } from '../views/html.ts';
 import { csrfField, formDayOrNever, layout, localTime } from '../views/layout.ts';
 import { MAX_LOGO_BYTES } from '../services/admin.ts';
+import { parseLimitGrant } from '../services/limits.ts';
 import { ServiceError } from '../services/context.ts';
 
 function adminNav(page: Page, active: string): Html {
@@ -16,6 +17,30 @@ function adminNav(page: Page, active: string): Html {
     ${item('/admin/preregistrations', 'admin.preregistrations')}
     ${item('/admin/branding', 'admin.branding')}
   </nav>`;
+}
+
+// Quota and time limit inputs for invitations and pre-registrations.
+function limitFields(page: Page, svc: Services): Html {
+  const { t } = page;
+  const d = svc.ctx.config.limits;
+  return html`<label>${t('admin.storage_quota')}<input type="number" name="storageQuotaMb" min="0" step="1" placeholder="${d.storageQuotaMb ?? t('admin.unlimited')}"></label>
+  <label>${t('admin.time_limit')}<input type="number" name="timeLimitDays" min="0" step="1" placeholder="${d.timeLimitDays ?? t('admin.unlimited')}"></label>`;
+}
+
+function limitsHelp(page: Page, svc: Services): Html {
+  const { t } = page;
+  const d = svc.ctx.config.limits;
+  return html`<small class="muted">${t('admin.limits_help', {
+    quota: d.storageQuotaMb === null ? t('admin.unlimited') : t('admin.mb', { n: d.storageQuotaMb }),
+    days: d.timeLimitDays === null ? t('admin.unlimited') : t('admin.days', { n: d.timeLimitDays }),
+  })}</small>`;
+}
+
+function grantText(page: Page, g: LimitGrant | undefined): string {
+  const { t } = page;
+  const quota = g?.storageQuotaMb === undefined ? t('admin.default') : g.storageQuotaMb === null ? t('admin.unlimited') : t('admin.mb', { n: g.storageQuotaMb });
+  const days = g?.timeLimitDays === undefined ? t('admin.default') : g.timeLimitDays === null ? t('admin.unlimited') : t('admin.days', { n: g.timeLimitDays });
+  return `${quota} / ${days}`;
 }
 
 function usersPage(page: Page, svc: Services, users: Array<{ user: User; repos: number }>): string {
@@ -57,11 +82,13 @@ ${newLink ? html`<section class="card highlight"><p>${t('admin.invite_created')}
   <label>${t('admin.valid_for')}<select name="days">
     <option value="7">${t('admin.days', { n: 7 })}</option><option value="30" selected>${t('admin.days', { n: 30 })}</option>
     <option value="90">${t('admin.days', { n: 90 })}</option><option value="">${t('tokens.never_expires')}</option></select></label>
+  <div class="row">${limitFields(page, svc)}</div>
+  ${limitsHelp(page, svc)}
   <div><button class="btn">${t('admin.invite_create')}</button></div>
 </form></section>
 <section class="card"><div class="table-wrap"><table>
-<thead><tr><th>${t('admin.note')}</th><th>${t('tokens.created')}</th><th>${t('tokens.expires')}</th><th>${t('admin.status')}</th><th></th></tr></thead>
-<tbody>${invites.map((inv) => html`<tr><td>${inv.note}</td><td>${localTime(page, inv.createdAt)}</td>
+<thead><tr><th>${t('admin.note')}</th><th>${t('admin.limits')}</th><th>${t('tokens.created')}</th><th>${t('tokens.expires')}</th><th>${t('admin.status')}</th><th></th></tr></thead>
+<tbody>${invites.map((inv) => html`<tr><td>${inv.note}</td><td>${grantText(page, inv.limits)}</td><td>${localTime(page, inv.createdAt)}</td>
   <td>${formDayOrNever(page, inv.expiresAt)}</td><td>${status(inv)}</td>
   <td class="actions"><form method="post" action="/admin/invitations/${inv.id}/revoke" class="inline">${csrfField(page)}
     <button class="btn btn-small btn-danger">${t('action.delete')}</button></form></td></tr>`)}</tbody></table></div></section>`);
@@ -72,13 +99,17 @@ function preregPage(page: Page, svc: Services, list: Preregistration[]): string 
   return layout(page, t('admin.preregistrations'), html`${adminNav(page, '/admin/preregistrations')}
 ${svc.ctx.config.registration.preregistration ? '' : html`<p class="warning">${t('admin.prereg_disabled')}</p>`}
 <p class="muted">${t('admin.prereg_intro')}</p>
-<section class="card"><form method="post" action="/admin/preregistrations" class="row">${csrfField(page)}
-  <input type="email" name="email" required placeholder="${t('field.email')}">
-  <input type="text" name="note" maxlength="200" placeholder="${t('admin.note')}">
-  <button class="btn">${t('action.add')}</button></form></section>
+<section class="card"><form method="post" action="/admin/preregistrations" class="stack">${csrfField(page)}
+  <div class="row">
+    <label>${t('field.email')}<input type="email" name="email" required></label>
+    <label>${t('admin.note')}<input type="text" name="note" maxlength="200"></label>
+  </div>
+  <div class="row">${limitFields(page, svc)}</div>
+  ${limitsHelp(page, svc)}
+  <div><button class="btn">${t('action.add')}</button></div></form></section>
 <section class="card"><div class="table-wrap"><table>
-<thead><tr><th>${t('field.email')}</th><th>${t('admin.note')}</th><th>${t('tokens.created')}</th><th></th></tr></thead>
-<tbody>${list.map((p) => html`<tr><td>${p.email}</td><td>${p.note}</td><td>${localTime(page, p.createdAt)}</td>
+<thead><tr><th>${t('field.email')}</th><th>${t('admin.note')}</th><th>${t('admin.limits')}</th><th>${t('tokens.created')}</th><th></th></tr></thead>
+<tbody>${list.map((p) => html`<tr><td>${p.email}</td><td>${p.note}</td><td>${grantText(page, p.limits)}</td><td>${localTime(page, p.createdAt)}</td>
   <td class="actions"><form method="post" action="/admin/preregistrations/remove" class="inline">${csrfField(page)}
     <input type="hidden" name="email" value="${p.email}"><button class="btn btn-small btn-danger">${t('action.delete')}</button></form></td></tr>`)}</tbody>
 </table></div></section>`);
@@ -194,7 +225,8 @@ export function registerAdminRoutes(app: Hono<AppEnv>, svc: Services): void {
     const admin = requireAdmin(c);
     const f = await formFields(c);
     const days = Number(f.days);
-    const { code } = await svc.invites.create(admin.id, f.note ?? '', days > 0 ? days : null);
+    const limits = parseLimitGrant(f.storageQuotaMb, f.timeLimitDays);
+    const { code } = await svc.invites.create(admin.id, f.note ?? '', days > 0 ? days : null, limits);
     c.header('Cache-Control', 'no-store');
     return c.html(await renderInvites(c.var.page, svc.invites.link(code)));
   });
@@ -209,7 +241,7 @@ export function registerAdminRoutes(app: Hono<AppEnv>, svc: Services): void {
 
   app.post('/admin/preregistrations', async (c) => {
     const f = await formFields(c);
-    await svc.prereg.add(f.email ?? '', f.note ?? '');
+    await svc.prereg.add(f.email ?? '', f.note ?? '', parseLimitGrant(f.storageQuotaMb, f.timeLimitDays));
     setFlash(c, 'ok', 'preregistration_added');
     return c.redirect('/admin/preregistrations');
   });

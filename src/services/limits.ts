@@ -60,24 +60,24 @@ async function dirSize(path: string): Promise<number> {
   return total;
 }
 
+// Limits stored in a new account: those of the grant; fields the grant
+// does not set stay absent, so the configured defaults apply.
+export function limitsForNewUser(grant: LimitGrant | undefined, createdAt: string): Pick<User, 'storageQuotaMb' | 'writableUntil'> {
+  const out: Pick<User, 'storageQuotaMb' | 'writableUntil'> = {};
+  if (grant?.storageQuotaMb !== undefined) out.storageQuotaMb = grant.storageQuotaMb;
+  if (grant?.timeLimitDays !== undefined) {
+    out.writableUntil = grant.timeLimitDays === null
+      ? null
+      : new Date(Date.parse(createdAt) + grant.timeLimitDays * 86400_000).toISOString();
+  }
+  return out;
+}
+
 export class LimitService {
   private ctx: Context;
 
   constructor(ctx: Context) {
     this.ctx = ctx;
-  }
-
-  // Values stored in a new account: those of the grant, falling back to
-  // the configured defaults when the grant does not set them.
-  forNewUser(grant: LimitGrant | undefined, createdAt: string): Pick<User, 'storageQuotaMb' | 'writableUntil'> {
-    const out: Pick<User, 'storageQuotaMb' | 'writableUntil'> = {};
-    if (grant?.storageQuotaMb !== undefined) out.storageQuotaMb = grant.storageQuotaMb;
-    if (grant?.timeLimitDays !== undefined) {
-      out.writableUntil = grant.timeLimitDays === null
-        ? null
-        : new Date(Date.parse(createdAt) + grant.timeLimitDays * 86400_000).toISOString();
-    }
-    return out;
   }
 
   effective(user: User): UserLimits {

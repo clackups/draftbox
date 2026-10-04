@@ -8,6 +8,7 @@ import {
 } from '../db/models.ts';
 import { randomId, randomSecret, sha256hex } from '../util/crypto.ts';
 import { isSupportedLanguage, translator } from '../i18n/index.ts';
+import { limitsForNewUser } from './limits.ts';
 
 // Handles that would collide with top-level web routes.
 const RESERVED_HANDLES = new Set([
@@ -139,25 +140,22 @@ export class UserService {
       }
 
       const reg = this.ctx.config.registration;
+      // A pre-registration or an invitation also sets the limits of the
+      // new account, even when registration is open to everyone.
       let invitation: Invitation | null = null;
-      let allowed = req.isAdmin || reg.open;
-      if (!allowed && reg.preregistration) {
-        allowed = (await tx.get<Preregistration>(`preregistrations/${emailKey(email)}.json`)) !== null;
-      }
-      if (!allowed && reg.invitations && req.inviteCode) {
-        invitation = await findUsableInvitation(tx, req.inviteCode);
-        allowed = invitation !== null;
-      }
-      if (!allowed) throw new ServiceError('registration_not_allowed', 403);
+      const prereg = reg.preregistration ? await tx.get<Preregistration>(`preregistrations/${emailKey(email)}.json`) : null;
+      if (!prereg && reg.invitations && req.inviteCode) invitation = await findUsableInvitation(tx, req.inviteCode);
+      if (!(req.isAdmin || reg.open || prereg || invitation)) throw new ServiceError('registration_not_allowed', 403);
 
       const id = randomId();
       const handle = await this.uniqueHandle(tx, email);
+      const createdAt = this.ctx.now();
       user = {
         id,
         email,
         handle,
         name: req.name.trim() || email.split('@')[0],
-        createdAt: this.ctx.now(),
+        createdAt,
         blocked: false,
         identities: [{ provider: req.provider, subject: req.subject }],
         prefs: {
@@ -167,6 +165,7 @@ export class UserService {
         },
         sshKeys: [],
         sessionEpoch: 0,
+        ...limitsForNewUser((prereg ?? invitation)?.limits, createdAt),
       };
       tx.put(`users/${id}.json`, user);
       tx.putText(`index/email/${emailKey(email)}`, id);
