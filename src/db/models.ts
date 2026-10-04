@@ -9,6 +9,7 @@
 //   preregistrations/<sha256(email)>.json Preregistration
 //   settings/branding.json               Branding
 //   settings/logo                        logo image (raw bytes)
+//   revoked-sessions/<sessionId>         expiry of a logged-out session
 //   index/email/<sha256(email)>          userId
 //   index/handle/<handle>                userId
 //   index/identity/<provider>/<sha256(subject)>  userId

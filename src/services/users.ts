@@ -18,6 +18,8 @@ const RESERVED_HANDLES = new Set([
   'preview', 'lang', 'theme', 'verify-email',
 ]);
 
+const SESSION_ID_RE = /^[0-9a-f]{32}$/;
+
 export const HANDLE_RE = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/;
 
 export interface LoginRequest {
@@ -325,6 +327,25 @@ export class UserService {
       console.error('Sending verification email failed:', err);
       throw new ServiceError('mail_failed', 502);
     }
+  }
+
+  // Ends a web session before it expires. Records of sessions that have
+  // expired meanwhile are dropped.
+  async revokeSession(sid: string, expiresAt: number): Promise<void> {
+    if (!SESSION_ID_RE.test(sid)) return;
+    await this.store.transact('Revoke session', async (tx) => {
+      const now = Date.now();
+      for (const name of await tx.list('revoked-sessions')) {
+        const until = await tx.getText(`revoked-sessions/${name}`);
+        if (until !== null && Date.parse(until) <= now) tx.delete(`revoked-sessions/${name}`);
+      }
+      if (expiresAt > now) tx.putText(`revoked-sessions/${sid}`, new Date(expiresAt).toISOString());
+    });
+  }
+
+  async isSessionRevoked(sid: string): Promise<boolean> {
+    if (!SESSION_ID_RE.test(sid)) return true;
+    return (await this.store.view().getText(`revoked-sessions/${sid}`)) !== null;
   }
 
   async setBlocked(userId: string, blocked: boolean, actor: string): Promise<User> {

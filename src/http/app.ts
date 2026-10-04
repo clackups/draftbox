@@ -139,7 +139,9 @@ export function createApp(svc: Services): Hono<AppEnv> {
     let admin = false;
     const raw = getCookie(c, SESSION_COOKIE);
     const session = unsign<SessionData>(cfg.sessionSecret, 'session', raw);
-    if (session && Date.now() - session.iat < cfg.sessionMaxAgeDays * 86400_000) {
+    // Sessions without an id predate logout revocation and are refused.
+    if (session && typeof session.sid === 'string' && Date.now() - session.iat < cfg.sessionMaxAgeDays * 86400_000
+      && !(await svc.users.isSessionRevoked(session.sid))) {
       const u = await svc.users.getById(session.uid);
       if (u && !u.blocked && u.sessionEpoch === session.epoch) {
         user = u;

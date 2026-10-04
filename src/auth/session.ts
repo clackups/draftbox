@@ -1,5 +1,6 @@
-// Stateless signed cookies. Sessions are revoked by bumping the user's
-// sessionEpoch (done when a user is blocked) or by expiry.
+// Signed cookies. All sessions of a user are revoked by bumping the
+// user's sessionEpoch (done when a user is blocked); a single session by
+// logging out, which records its id until it would expire.
 
 import { hmacB64, safeEqual } from '../util/crypto.ts';
 
@@ -9,6 +10,8 @@ export const LANG_COOKIE = 'dbx_lang';
 export const INVITE_COOKIE = 'dbx_invite';
 
 export interface SessionData {
+  // Random session id, 32 hex digits.
+  sid: string;
   uid: string;
   epoch: number;
   provider: string;

@@ -741,3 +741,21 @@ test('administrator rights follow the configuration in existing sessions', async
   }
   assert.equal((await admin.get('/admin/users')).res.status, 200);
 });
+
+test('a session cookie stops working after logging out', async () => {
+  await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'logout@example.com' });
+  const b = new Browser(env);
+  await b.login('logout@example.com');
+  assert.equal((await b.get('/settings')).res.status, 200);
+  const copy = new Browser(env);
+  copy.cookies = new Map(b.cookies);
+  // Another session of the same user stays valid.
+  const other = new Browser(env);
+  await other.login('logout@example.com');
+
+  await b.post('/logout', {});
+  const res = await copy.get('/settings');
+  assert.equal(res.res.status, 302);
+  assert.match(res.res.headers.get('location') ?? '', /^\/login/);
+  assert.equal((await other.get('/settings')).res.status, 200);
+});

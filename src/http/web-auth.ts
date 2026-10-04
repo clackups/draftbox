@@ -5,7 +5,7 @@ import { INVITE_COOKIE, LANG_COOKIE, OAUTH_COOKIE, SESSION_COOKIE, type SessionD
 import { newVerifier, type ProviderProfile } from '../auth/oauth.ts';
 import { ServiceError } from '../services/context.ts';
 import { isSupportedLanguage } from '../i18n/index.ts';
-import { randomSecret } from '../util/crypto.ts';
+import { randomId, randomSecret } from '../util/crypto.ts';
 import { html } from '../views/html.ts';
 import { csrfField, errorPage, layout } from '../views/layout.ts';
 import type { Page } from './app.ts';
@@ -65,7 +65,7 @@ async function completeLogin(c: Ctx, svc: Services, provider: string, profile: P
     throw err;
   }
   deleteCookie(c, INVITE_COOKIE, { path: '/' });
-  const data: SessionData = { uid: user.id, epoch: user.sessionEpoch, provider, iat: Date.now() };
+  const data: SessionData = { sid: randomId(16), uid: user.id, epoch: user.sessionEpoch, provider, iat: Date.now() };
   setCookie(c, SESSION_COOKIE, sessionCookie(svc, data), {
     path: '/', httpOnly: true, sameSite: 'Lax', secure: isSecure(svc), maxAge: cfg.sessionMaxAgeDays * 86400,
   });
@@ -151,7 +151,10 @@ export function registerAuthRoutes(app: Hono<AppEnv>, svc: Services): void {
     return completeLogin(c, svc, provider.id, profile, state.n);
   });
 
-  app.post('/logout', (c) => {
+  app.post('/logout', async (c) => {
+    // A copy of the cookie must not keep working after logging out.
+    const session = c.var.session;
+    if (session) await svc.users.revokeSession(session.sid, session.iat + cfg.sessionMaxAgeDays * 86400_000);
     deleteCookie(c, SESSION_COOKIE, { path: '/' });
     return c.redirect('/');
   });
