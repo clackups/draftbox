@@ -46,6 +46,36 @@ export function parseLimitGrant(storageQuotaMb: unknown, timeLimitDays: unknown)
   return grant;
 }
 
+// A change of an existing account's limits. An absent field is left
+// unchanged, 'default' returns to the configured default, null means
+// unlimited.
+export interface LimitUpdate {
+  storageQuotaMb?: number | null | 'default';
+  writableUntil?: string | null | 'default';
+}
+
+// Parses a quota change: '' or 'default' is the default, null or 0 is
+// unlimited.
+export function parseQuotaUpdate(value: unknown): LimitUpdate['storageQuotaMb'] {
+  if (value === undefined) return undefined;
+  if (value === '' || value === 'default') return 'default';
+  return parseLimit(value, MAX_QUOTA_MB) ?? null;
+}
+
+// Parses a time limit change: '' or 'default' is the default, null is
+// unlimited, a date (YYYY-MM-DD, the account stays writable through that
+// day, UTC) or a full ISO timestamp sets the end.
+export function parseUntilUpdate(value: unknown): LimitUpdate['writableUntil'] {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (value === '' || value === 'default') return 'default';
+  if (typeof value !== 'string') throw new ServiceError('invalid_limit');
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T23:59:59.999Z` : value;
+  const ms = Date.parse(iso);
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(iso) || isNaN(ms)) throw new ServiceError('invalid_limit');
+  return new Date(ms).toISOString();
+}
+
 async function dirSize(path: string): Promise<number> {
   let total = 0;
   let entries;
@@ -127,6 +157,19 @@ export class LimitService {
     if (limits.writableUntil && Date.parse(limits.writableUntil) <= Date.now()) blockedBy = 'time_limit_expired';
     else if (limits.storageQuotaMb !== null && usedBytes >= limits.storageQuotaMb * MB) blockedBy = 'quota_exceeded';
     return { ...limits, usedBytes, blockedBy };
+  }
+
+  async update(userId: string, patch: LimitUpdate, actor: string): Promise<User> {
+    return this.ctx.store.transact(`Update limits of ${userId} by ${actor}`, async (tx) => {
+      const user = await tx.get<User>(`users/${userId}.json`);
+      if (!user) throw new ServiceError('not_found', 404);
+      if (patch.storageQuotaMb === 'default') delete user.storageQuotaMb;
+      else if (patch.storageQuotaMb !== undefined) user.storageQuotaMb = patch.storageQuotaMb;
+      if (patch.writableUntil === 'default') delete user.writableUntil;
+      else if (patch.writableUntil !== undefined) user.writableUntil = patch.writableUntil;
+      tx.put(`users/${userId}.json`, user);
+      return user;
+    });
   }
 
   // Throws when the account may not create new commits.

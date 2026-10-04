@@ -20,12 +20,22 @@
 //   storageQuotaMb and timeLimitDays (counted from registration) are
 //   optional: when absent, the configured defaults apply; null or 0
 //   means unlimited.
+//
+//   GET    /api/v1/admin/users/:email                account and its limits
+//   PATCH  /api/v1/admin/users/:email/limits         {"storageQuotaMb": 500,
+//                                                    "writableUntil": "2027-06-30"}
+//
+//   In a limits change, an absent field stays unchanged, "default" returns
+//   to the configured default and null (or 0 for the quota) means
+//   unlimited. writableUntil is a date (writable through that day, UTC)
+//   or an ISO timestamp.
 
 import type { Hono } from 'hono';
 import type { AppEnv, Ctx, Services } from './app.ts';
 import { ServiceError } from '../services/context.ts';
 import { safeEqual } from '../util/crypto.ts';
-import { parseLimitGrant } from '../services/limits.ts';
+import { parseLimitGrant, parseQuotaUpdate, parseUntilUpdate } from '../services/limits.ts';
+import type { User } from '../db/models.ts';
 
 // Fixed-window limiter for the one-time password endpoint: 8-digit
 // passwords must not be guessable by brute force.
@@ -151,6 +161,47 @@ export function registerApiRoutes(app: Hono<AppEnv>, svc: Services): void {
     }
     const { invitation, code } = await svc.invites.create('api', String(body.note ?? ''), days > 0 ? Math.min(days, 365) : null, limits);
     return c.json({ id: invitation.id, link: svc.invites.link(code), expiresAt: invitation.expiresAt, limits: invitation.limits ?? {} }, 201);
+  });
+
+  const userJson = async (user: User) => {
+    const status = await svc.limits.status(user);
+    return {
+      user: { email: user.email, handle: user.handle, name: user.name, createdAt: user.createdAt, blocked: user.blocked },
+      limits: {
+        storageQuotaMb: status.storageQuotaMb,
+        writableUntil: status.writableUntil,
+        admin: status.admin,
+        usedBytes: status.usedBytes,
+        readOnly: status.blockedBy,
+        // Values stored for the account; absent fields use the defaults.
+        custom: {
+          ...(user.storageQuotaMb !== undefined ? { storageQuotaMb: user.storageQuotaMb } : {}),
+          ...(user.writableUntil !== undefined ? { writableUntil: user.writableUntil } : {}),
+        },
+      },
+    };
+  };
+
+  app.get('/api/v1/admin/users/:email', async (c) => {
+    const user = await svc.users.getByEmail(c.req.param('email'));
+    if (!user) return c.json({ error: 'not_found' }, 404);
+    return c.json(await userJson(user));
+  });
+
+  app.patch('/api/v1/admin/users/:email/limits', async (c) => {
+    const user = await svc.users.getByEmail(c.req.param('email'));
+    if (!user) return c.json({ error: 'not_found' }, 404);
+    const body = await jsonBody(c);
+    try {
+      const updated = await svc.limits.update(user.id, {
+        storageQuotaMb: parseQuotaUpdate(body.storageQuotaMb),
+        writableUntil: parseUntilUpdate(body.writableUntil),
+      }, 'api');
+      return c.json(await userJson(updated));
+    } catch (err) {
+      if (err instanceof ServiceError && err.status === 400) return c.json({ error: err.code }, 400);
+      throw err;
+    }
   });
 
   app.all('/api/*', (c) => c.json({ error: 'not_found' }, 404));

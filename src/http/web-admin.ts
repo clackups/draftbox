@@ -4,7 +4,7 @@ import type { Branding, Invitation, LimitGrant, Preregistration, Theme, User } f
 import { html, type Html } from '../views/html.ts';
 import { csrfField, formDayOrNever, layout, localTime, storageUsage } from '../views/layout.ts';
 import { MAX_LOGO_BYTES } from '../services/admin.ts';
-import { parseLimitGrant, type LimitStatus } from '../services/limits.ts';
+import { parseLimitGrant, parseQuotaUpdate, parseUntilUpdate, type LimitStatus } from '../services/limits.ts';
 import { ServiceError } from '../services/context.ts';
 
 function adminNav(page: Page, active: string): Html {
@@ -58,12 +58,42 @@ function usersPage(page: Page, svc: Services, users: Array<{ user: User; repos: 
   <td class="${limits.blockedBy === 'quota_exceeded' ? 'text-danger' : ''}">${storageUsage(page, limits)}</td>
   <td class="${limits.blockedBy === 'time_limit_expired' ? 'text-danger' : ''}">${limits.writableUntil ? localTime(page, limits.writableUntil, 'date') : t('admin.unlimited')}</td>
   <td>${u.blocked ? html`<span class="badge badge-warn">${t('admin.blocked')}</span>` : html`<span class="badge">${t('admin.active')}</span>`}</td>
-  <td class="actions">${u.id === page.user?.id ? html`<span class="muted">${t('admin.you')}</span>` : html`
+  <td class="actions"><a href="/admin/users/${u.id}/limits" class="btn btn-small btn-secondary">${t('admin.edit_limits')}</a>
+    ${u.id === page.user?.id ? html`<span class="muted">${t('admin.you')}</span>` : html`
     <form method="post" action="/admin/users/${u.id}/${u.blocked ? 'unblock' : 'block'}" class="inline">${csrfField(page)}
       <button class="btn btn-small btn-secondary">${u.blocked ? t('admin.unblock') : t('admin.block')}</button></form>
     <form method="post" action="/admin/users/${u.id}/delete" class="inline" data-confirm="${t('admin.delete_confirm', { email: u.email })}">${csrfField(page)}
       <button class="btn btn-small btn-danger">${t('action.delete')}</button></form>`}</td>
 </tr>`)}</tbody></table></div></section>`);
+}
+
+function userLimitsPage(page: Page, svc: Services, user: User, status: LimitStatus, error?: string): string {
+  const { t } = page;
+  const d = svc.ctx.config.limits;
+  const quota = user.storageQuotaMb === undefined ? '' : user.storageQuotaMb === null ? '0' : String(user.storageQuotaMb);
+  const until = typeof user.writableUntil === 'string' ? user.writableUntil.slice(0, 10) : '';
+  return layout(page, t('admin.limits_title', { email: user.email }), html`${adminNav(page, '/admin/users')}
+<h2>${t('admin.limits_title', { email: user.email })}</h2>
+${error ? html`<p class="flash flash-error">${t('error.' + error)}</p>` : ''}
+${status.admin ? html`<p class="warning">${t('admin.admin_unlimited')}</p>` : ''}
+<section class="card stack">
+  <p>${t('settings.storage_used')} <strong>${storageUsage(page, status)}</strong></p>
+  <p>${t('admin.writable_until')}: <strong>${status.writableUntil ? localTime(page, status.writableUntil, 'date') : t('admin.unlimited')}</strong></p>
+  ${status.blockedBy ? html`<p class="text-danger">${t('error.' + status.blockedBy)}</p>` : ''}
+</section>
+<section class="card"><form method="post" action="/admin/users/${user.id}/limits" class="stack">${csrfField(page)}
+  <div class="row">
+    <label>${t('admin.storage_quota')}<input type="number" name="storageQuotaMb" min="0" step="1" value="${quota}"
+      placeholder="${d.storageQuotaMb ?? t('admin.unlimited')}"></label>
+    <label>${t('admin.writable_until')}<input type="date" name="writableUntil" value="${until}"></label>
+  </div>
+  <label class="check"><input type="checkbox" name="noTimeLimit" value="1" ${user.writableUntil === null ? 'checked' : ''}> ${t('admin.no_time_limit')}</label>
+  <small class="muted">${t('admin.user_limits_help', {
+    quota: d.storageQuotaMb === null ? t('admin.unlimited') : t('admin.mb', { n: d.storageQuotaMb }),
+    days: d.timeLimitDays === null ? t('admin.unlimited') : t('admin.days', { n: d.timeLimitDays }),
+  })}</small>
+  <div><button class="btn">${t('action.save')}</button> <a href="/admin/users" class="btn btn-secondary">${t('action.cancel')}</a></div>
+</form></section>`);
 }
 
 function invitationsPage(page: Page, svc: Services, invites: Invitation[], users: Map<string, User>, newLink?: string): string {
@@ -199,6 +229,37 @@ export function registerAdminRoutes(app: Hono<AppEnv>, svc: Services): void {
       user, repos: await svc.users.countRepos(user.id), limits: await svc.limits.status(user),
     })));
     return c.html(usersPage(c.var.page, svc, rows));
+  });
+
+  const userOr404 = async (id: string): Promise<User> => {
+    const user = await svc.users.getById(id);
+    if (!user) throw new ServiceError('not_found', 404);
+    return user;
+  };
+
+  app.get('/admin/users/:id/limits', async (c) => {
+    const user = await userOr404(c.req.param('id'));
+    return c.html(userLimitsPage(c.var.page, svc, user, await svc.limits.status(user)));
+  });
+
+  // Registered before the generic action route below.
+  app.post('/admin/users/:id/limits', async (c) => {
+    const admin = requireAdmin(c);
+    const user = await userOr404(c.req.param('id'));
+    const f = await formFields(c);
+    try {
+      await svc.limits.update(user.id, {
+        storageQuotaMb: parseQuotaUpdate(f.storageQuotaMb ?? ''),
+        writableUntil: f.noTimeLimit === '1' ? null : parseUntilUpdate(f.writableUntil ?? ''),
+      }, admin.email);
+    } catch (err) {
+      if (err instanceof ServiceError && err.status === 400) {
+        return c.html(userLimitsPage(c.var.page, svc, user, await svc.limits.status(user), err.code), 400);
+      }
+      throw err;
+    }
+    setFlash(c, 'ok', 'limits_saved');
+    return c.redirect('/admin/users');
   });
 
   app.post('/admin/users/:id/:action', async (c) => {

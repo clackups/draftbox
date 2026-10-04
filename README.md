@@ -111,11 +111,22 @@ Administrative API, authenticated with one of `adminApiKeys`
 | GET    | /api/v1/admin/preregistrations/{email} | pre-registration and account status |
 | DELETE | /api/v1/admin/preregistrations/{email} | withdraw a pre-registration |
 | POST   | /api/v1/admin/invitations | create an invitation link (`note`, `expiresDays`, `storageQuotaMb`, `timeLimitDays`) |
+| GET    | /api/v1/admin/users/{email} | account, its limits and storage use |
+| PATCH  | /api/v1/admin/users/{email}/limits | change an account's limits (`storageQuotaMb`, `writableUntil`) |
 
 `storageQuotaMb` and `timeLimitDays` (counted from registration) set the
 limits of the account created with the pre-registration or invitation;
 when omitted, the configured defaults apply, and `null` or `0` means
 unlimited.
+
+In a limits change, an absent field stays unchanged, `"default"` returns
+to the configured default and `null` (or `0` for the quota) means
+unlimited; `writableUntil` is a date (writable through that day, UTC) or
+an ISO timestamp:
+
+    curl -X PATCH -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+      -d '{"storageQuotaMb":500,"writableUntil":"2027-06-30"}' \
+      https://draftbox.example.com/api/v1/admin/users/new.user@example.com/limits
 
 Data
 ----

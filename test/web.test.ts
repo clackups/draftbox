@@ -432,6 +432,64 @@ test('administrator accounts have no quota or time limit', async () => {
   assert.equal(env.svc.limits.effective(user).storageQuotaMb, 0.0001);
 });
 
+test('administrators change the limits of existing accounts', async () => {
+  await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'pat@example.com' });
+  const pat = new Browser(env);
+  await pat.login('pat@example.com');
+  const id = (await env.svc.users.getByEmail('pat@example.com'))!.id;
+  const get = async () => (await env.svc.users.getById(id))!;
+
+  // Web interface.
+  const admin = new Browser(env);
+  await admin.login(ADMIN_EMAIL);
+  assert.match((await admin.get('/admin/users')).text, new RegExp(`href="/admin/users/${id}/limits"`));
+  let page = await admin.get(`/admin/users/${id}/limits`);
+  assert.match(page.text, /Limits of pat@example\.com/);
+  let r = await admin.post(`/admin/users/${id}/limits`, { storageQuotaMb: '250', writableUntil: '2030-01-31' });
+  assert.equal(r.res.status, 302);
+  let user = await get();
+  assert.equal(user.storageQuotaMb, 250);
+  assert.equal(user.writableUntil, '2030-01-31T23:59:59.999Z');
+  page = await admin.get(`/admin/users/${id}/limits`);
+  assert.match(page.text, /name="storageQuotaMb"[^>]*value="250"/);
+  assert.match(page.text, /value="2030-01-31"/);
+  r = await admin.post(`/admin/users/${id}/limits`, { storageQuotaMb: '0', writableUntil: '2030-01-31', noTimeLimit: '1' });
+  user = await get();
+  assert.equal(user.storageQuotaMb, null);
+  assert.equal(user.writableUntil, null);
+  r = await admin.post(`/admin/users/${id}/limits`, { storageQuotaMb: '', writableUntil: '' });
+  user = await get();
+  assert.equal('storageQuotaMb' in user, false);
+  assert.equal('writableUntil' in user, false);
+  r = await admin.post(`/admin/users/${id}/limits`, { storageQuotaMb: '-3', writableUntil: '' });
+  assert.equal(r.res.status, 400);
+  assert.match(r.text, /Enter a whole number/);
+  // Only administrators.
+  assert.equal((await pat.get(`/admin/users/${id}/limits`)).res.status, 403);
+
+  // API.
+  assert.equal((await adminApi(env, 'GET', '/api/v1/admin/users/nobody@example.com')).status, 404);
+  let res = await adminApi(env, 'PATCH', '/api/v1/admin/users/pat@example.com/limits', { storageQuotaMb: 42, writableUntil: '2031-05-01T12:00:00Z' });
+  assert.equal(res.status, 200);
+  let body = await res.json() as { limits: { storageQuotaMb: number | null; writableUntil: string | null; admin: boolean; readOnly: string | null; custom: object } };
+  assert.equal(body.limits.storageQuotaMb, 42);
+  assert.equal(body.limits.writableUntil, '2031-05-01T12:00:00.000Z');
+  assert.equal(body.limits.admin, false);
+  // Absent fields stay unchanged; an expired date makes the account read-only.
+  res = await adminApi(env, 'PATCH', '/api/v1/admin/users/pat@example.com/limits', { writableUntil: '2020-01-01' });
+  body = await res.json() as typeof body;
+  assert.equal(body.limits.storageQuotaMb, 42);
+  assert.equal(body.limits.readOnly, 'time_limit_expired');
+  res = await adminApi(env, 'PATCH', '/api/v1/admin/users/pat@example.com/limits', { storageQuotaMb: 'default', writableUntil: null });
+  body = await res.json() as typeof body;
+  assert.equal(body.limits.storageQuotaMb, 100);
+  assert.deepEqual(body.limits.custom, { writableUntil: null });
+  assert.equal((await adminApi(env, 'PATCH', '/api/v1/admin/users/pat@example.com/limits', { writableUntil: 'soon' })).status, 400);
+  res = await adminApi(env, 'GET', '/api/v1/admin/users/pat@example.com');
+  body = await res.json() as typeof body;
+  assert.equal(body.limits.readOnly, null);
+});
+
 test('download all returns a ZIP archive of the repository', async () => {
   await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'zed@example.com' });
   const zed = new Browser(env);
