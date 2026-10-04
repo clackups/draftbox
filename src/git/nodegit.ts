@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import {
   type CommitInfo, type EntryType, type GitBackend, type GitRepo, type Person,
   type RefInfo, type TreeChanges, type TreeEntry,
-  PathConflictError, RefConflictError,
+  PathConflictError, RefConflictError, isGitDirName,
 } from './types.ts';
 
 // nodegit ships incomplete typings; the binding is used through a narrow,
@@ -151,7 +151,7 @@ class NodegitRepo implements GitRepo {
     const pending: PendingChange[] = [];
     for (const [path, content] of changes) {
       const segments = path.split('/').filter((s) => s.length > 0);
-      if (segments.length === 0 || segments.some((s) => s === '.' || s === '..' || s === '.git')) {
+      if (segments.length === 0 || segments.some((s) => s === '.' || s === '..' || isGitDirName(s))) {
         throw new PathConflictError(path);
       }
       pending.push({ segments, content });

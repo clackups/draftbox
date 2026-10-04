@@ -77,6 +77,11 @@ test('name validation', () => {
   assert.ok(validFilePath('docs/a.md'));
   assert.ok(!validFilePath('docs/../a.md'));
   assert.ok(!validFilePath('.git/config'));
+  for (const p of ['.GIT/hooks/post-checkout', 'a/.Git/config', '.git./config', '.git /x', 'GIT~1/config', '.g\u200cit/config']) {
+    assert.ok(!validFilePath(p), p);
+  }
+  assert.ok(validFilePath('.gitignore'));
+  assert.ok(validFilePath('docs/.github/x.md'));
 });
 
 test('translations', () => {

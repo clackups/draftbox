@@ -5,7 +5,7 @@ import type { Context } from './context.ts';
 import { ServiceError } from './context.ts';
 import type { Repo, User, Visibility } from '../db/models.ts';
 import type { CommitInfo, GitRepo, RefInfo, TreeChanges, TreeEntry } from '../git/types.ts';
-import { PathConflictError, RefConflictError } from '../git/types.ts';
+import { PathConflictError, RefConflictError, isGitDirName } from '../git/types.ts';
 import { randomId } from '../util/crypto.ts';
 
 export const REPO_NAME_RE = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,99}$/;
@@ -26,7 +26,7 @@ export function validRefName(name: string): boolean {
 export function validFilePath(path: string): boolean {
   if (path.length === 0 || path.length > 1000) return false;
   const parts = path.split('/');
-  return parts.every((p) => p.length > 0 && p !== '.' && p !== '..' && p !== '.git' && !/[\x00-\x1f]/.test(p));
+  return parts.every((p) => p.length > 0 && p !== '.' && p !== '..' && !isGitDirName(p) && !/[\x00-\x1f]/.test(p));
 }
 
 export interface Author {

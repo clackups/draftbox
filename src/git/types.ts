@@ -46,6 +46,15 @@ export class RefConflictError extends Error {
   }
 }
 
+// Whether a path segment names the .git directory on some file system:
+// case-insensitive (Windows, macOS), with trailing dots or spaces or as
+// the 8.3 short name (NTFS), or with characters HFS+ ignores. Git
+// clients refuse such paths; they are never written.
+export function isGitDirName(segment: string): boolean {
+  const s = segment.replace(/[\u200b-\u200f\u202a-\u202e\u206a-\u206f\ufeff]/g, '').toLowerCase().replace(/[. ]+$/, '');
+  return s === '.git' || s === 'git~1';
+}
+
 export class PathConflictError extends Error {
   constructor(path: string) {
     super(`path conflict at ${path}`);
