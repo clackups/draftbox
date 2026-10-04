@@ -58,6 +58,9 @@ export type Ctx = HonoContext<AppEnv>;
 const CSRF_COOKIE = 'dbx_csrf';
 const FLASH_COOKIE = 'dbx_flash';
 const MAX_FORM_BYTES = 20 * 1024 * 1024;
+// Forms that work without login (dev login, email verification, logout)
+// are tiny; nobody else gets to send large bodies.
+const MAX_ANONYMOUS_FORM_BYTES = 64 * 1024;
 
 export function createServices(ctx: Context): Services {
   return {
@@ -179,7 +182,14 @@ export function createApp(svc: Services): Hono<AppEnv> {
       flash: readFlash(c),
       devLogin: cfg.oauth.dev?.enabled === true,
     });
+    await next();
+  });
 
+  const anonymousBodyLimit = bodyLimit({ maxSize: MAX_ANONYMOUS_FORM_BYTES, onError: (c) => c.text('Payload too large', 413) });
+  app.use('*', (c, next) => (c.var.page.user ? next() : anonymousBodyLimit(c, next)));
+
+  app.use('*', async (c, next) => {
+    const csrf = c.var.page.csrf;
     if (c.req.method === 'POST' && !isGitRequestPath(c.req.path)) {
       const fields = await formFields(c).catch(() => ({} as Record<string, string>));
       const sent = fields._csrf ?? c.req.header('X-CSRF-Token');

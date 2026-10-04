@@ -782,3 +782,11 @@ test('a released user name is kept for its previous owner', async () => {
   assert.equal((await env.svc.users.getByEmail('rita@other.example'))?.handle, 'rita-2');
   await assert.rejects(env.svc.users.updateProfile(sam.id, { handle: 'rita' }), /handle_taken/);
 });
+
+test('anonymous requests cannot send large bodies', async () => {
+  const anon = new Browser(env);
+  await anon.get('/auth/dev');
+  const r = await anon.post('/logout', { padding: 'x'.repeat(100 * 1024) });
+  assert.equal(r.res.status, 413);
+  assert.equal((await anon.post('/logout', {})).res.status, 302);
+});
