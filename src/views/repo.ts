@@ -5,6 +5,8 @@ import type { Hunk } from '../util/diff.ts';
 import { html, raw, urlPath, type Html } from './html.ts';
 import { csrfField, layout, localTime, tHtml } from './layout.ts';
 import { DEFAULT_BRANCH } from '../services/repos.ts';
+import { landingText } from '../services/admin.ts';
+import { renderMarkdown } from '../util/markdown.ts';
 import { tokenTable } from './tokens.ts';
 
 export interface RepoCtx {
@@ -431,11 +433,7 @@ export function landingPage(page: Page): string {
   <p class="lead">${t('landing.lead')}</p>
   <p><a class="btn" href="/login">${t('nav.login')}</a> <a class="btn btn-secondary" href="/explore">${t('nav.explore')}</a></p>
 </section>
-<section class="features">
-  <div class="card"><h3>${t('landing.f1_title')}</h3><p>${t('landing.f1')}</p></div>
-  <div class="card"><h3>${t('landing.f2_title')}</h3><p>${t('landing.f2')}</p></div>
-  <div class="card"><h3>${t('landing.f3_title')}</h3><p>${t('landing.f3')}</p></div>
-</section>`);
+<section class="card markdown landing-text">${raw(renderMarkdown(landingText(page.branding, page.lang)))}</section>`);
 }
 
 export function explorePage(page: Page, items: Array<{ repo: Repo; owner: User }>): string {

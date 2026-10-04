@@ -6,12 +6,29 @@ import type { Branding, Invitation, LimitGrant, Preregistration, Theme } from '.
 import { DEFAULT_BRANDING } from '../db/models.ts';
 import { randomId, randomSecret, sha256hex } from '../util/crypto.ts';
 import { sanitizeHtml } from '../util/sanitize.ts';
+import { isSupportedLanguage, translator } from '../i18n/index.ts';
 import { emailKey, findUsableInvitation, normalizeEmail } from './users.ts';
 
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const LOGO_TYPES = new Set(['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp', 'image/gif']);
 export const MAX_LOGO_BYTES = 512 * 1024;
 export const MAX_FOOTER = 4000;
+export const MAX_LANDING_TEXT = 20000;
+
+// Built-in landing page text (Markdown) of a language.
+export function defaultLandingText(lang: string): string {
+  return translator(lang)('landing.text');
+}
+
+// Landing page text (Markdown) for a language: the administrator's text,
+// or the built-in one if none was set for that language.
+export function landingText(b: Branding, lang: string): string {
+  return b.landingText[lang] || defaultLandingText(lang);
+}
+
+function normalizeText(s: string): string {
+  return s.replace(/\r\n?/g, '\n').trim();
+}
 
 export class InvitationService {
   private ctx: Context;
@@ -127,7 +144,7 @@ export class BrandingService {
     return value;
   }
 
-  async update(patch: Partial<Pick<Branding, 'siteName' | 'primaryColor' | 'accentColor' | 'lightBackground' | 'darkBackground' | 'lightPanel' | 'darkPanel' | 'defaultTheme' | 'customCss' | 'footerText'>>, actor: string): Promise<Branding> {
+  async update(patch: Partial<Pick<Branding, 'siteName' | 'primaryColor' | 'accentColor' | 'lightBackground' | 'darkBackground' | 'lightPanel' | 'darkPanel' | 'defaultTheme' | 'customCss' | 'footerText' | 'landingText'>>, actor: string): Promise<Branding> {
     return this.ctx.store.transact(`Update branding by ${actor}`, async (tx) => {
       const cur = { ...DEFAULT_BRANDING, ...(await tx.get<Partial<Branding>>('settings/branding.json')) };
       if (patch.siteName !== undefined) cur.siteName = patch.siteName.trim().slice(0, 60) || DEFAULT_BRANDING.siteName;
@@ -142,6 +159,18 @@ export class BrandingService {
       }
       if (patch.customCss !== undefined) cur.customCss = sanitizeCss(patch.customCss.slice(0, 20000));
       if (patch.footerText !== undefined) cur.footerText = sanitizeHtml(patch.footerText.trim().slice(0, MAX_FOOTER));
+      if (patch.landingText !== undefined) {
+        const texts = { ...cur.landingText };
+        for (const [lang, value] of Object.entries(patch.landingText)) {
+          if (!isSupportedLanguage(lang)) continue;
+          const text = normalizeText(value).slice(0, MAX_LANDING_TEXT);
+          // The unchanged built-in text is not stored, so that it follows
+          // later updates of the translations.
+          if (text && text !== normalizeText(defaultLandingText(lang))) texts[lang] = text;
+          else delete texts[lang];
+        }
+        cur.landingText = texts;
+      }
       tx.put('settings/branding.json', cur);
       return cur;
     });

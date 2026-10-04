@@ -2,6 +2,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { ADMIN_EMAIL, Browser, adminApi, setup, type TestEnv } from './helpers.ts';
 import { DEFAULT_BRANDING } from '../src/db/models.ts';
+import { defaultLandingText } from '../src/services/admin.ts';
 
 let env: TestEnv;
 
@@ -611,6 +612,36 @@ test('branding and language selection', async () => {
   assert.match((await anon.get('/')).text, /Anmelden/);
   const uk = new Browser(env);
   assert.match((await uk.get('/', { 'Accept-Language': 'uk-UA,uk;q=0.9' })).text, /lang="uk"/);
+});
+
+test('landing page text is editable per language', async () => {
+  const anon = new Browser(env);
+  assert.match((await anon.get('/')).text, /<section class="card markdown landing-text"><ul>\s*<li><strong>Write in your browser\.<\/strong>/);
+
+  const admin = new Browser(env);
+  await admin.login(ADMIN_EMAIL);
+  const form = await admin.get('/admin/branding');
+  assert.match(form.text, /<textarea name="landingText_en"[^>]*>- \*\*Write in your browser/);
+  assert.match(form.text, /<textarea name="landingText_de"[^>]*>- \*\*Im Browser schreiben/);
+  await admin.post('/admin/branding', {
+    siteName: 'Draftbox', primaryColor: '#2f6f4f', accentColor: '#c9822b', defaultTheme: 'auto', footerText: '', customCss: '',
+    landingText_en: '# Hello\r\n\r\nWelcome <script>bad()</script> [here](javascript:x)',
+    landingText_uk: '',
+    landingText_de: defaultLandingText('de') + '\r\n',
+  });
+  // Empty and unchanged built-in texts are not stored.
+  assert.deepEqual((await env.svc.branding.get()).landingText, { en: '# Hello\n\nWelcome <script>bad()</script> [here](javascript:x)' });
+  const page = (await anon.get('/')).text;
+  assert.match(page, /<h1>Hello<\/h1>/);
+  assert.match(page, /Welcome &lt;script&gt;bad\(\)&lt;\/script&gt; here/);
+  assert.doesNotMatch(page, /Write in your browser/);
+  await anon.get('/lang/de?next=/');
+  assert.match((await anon.get('/')).text, /Im Browser schreiben/);
+
+  await admin.post('/admin/branding', {
+    siteName: 'Draftbox', primaryColor: '#2f6f4f', accentColor: '#c9822b', defaultTheme: 'auto', footerText: '', customCss: '', landingText_en: '',
+  });
+  assert.deepEqual((await env.svc.branding.get()).landingText, {});
 });
 
 test('branding can be reset to the defaults', async () => {

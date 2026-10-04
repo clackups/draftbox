@@ -3,7 +3,8 @@ import { type AppEnv, type Page, type Services, formFields, requireAdmin, setFla
 import type { Branding, Invitation, LimitGrant, Preregistration, Theme, User } from '../db/models.ts';
 import { html, type Html } from '../views/html.ts';
 import { csrfField, formDayOrNever, layout, localTime, storageUsage } from '../views/layout.ts';
-import { MAX_FOOTER, MAX_LOGO_BYTES } from '../services/admin.ts';
+import { MAX_FOOTER, MAX_LANDING_TEXT, MAX_LOGO_BYTES, landingText } from '../services/admin.ts';
+import { LANGUAGES, languageName } from '../i18n/index.ts';
 import { parseLimitGrant, parseQuotaUpdate, parseUntilUpdate, type LimitStatus } from '../services/limits.ts';
 import { ServiceError } from '../services/context.ts';
 
@@ -201,6 +202,10 @@ function brandingPage(page: Page, b: Branding): string {
   </div>
   <label>${t('admin.footer_text')}<textarea name="footerText" rows="3" class="mono" maxlength="${MAX_FOOTER}">${b.footerText}</textarea>
     <small class="muted">${t('admin.footer_text_help')}</small></label>
+  <fieldset><legend>${t('admin.landing_text')}</legend>
+    <small class="muted">${t('admin.landing_text_help')}</small>
+    ${LANGUAGES.map((l) => html`<label>${languageName(l)}<textarea name="landingText_${l}" rows="8" class="mono" lang="${l}" maxlength="${MAX_LANDING_TEXT}">${landingText(b, l)}</textarea></label>`)}
+  </fieldset>
   <label>${t('admin.custom_css')}<textarea name="customCss" rows="8" class="mono">${b.customCss}</textarea>
     <small class="muted">${t('admin.custom_css_help')}</small></label>
   <div><button class="btn">${t('action.save')}</button></div>
@@ -341,6 +346,10 @@ export function registerAdminRoutes(app: Hono<AppEnv>, svc: Services): void {
       darkPanel: f.darkPanel,
       defaultTheme: f.defaultTheme as Theme,
       footerText: f.footerText,
+      landingText: Object.fromEntries(LANGUAGES.flatMap((l) => {
+        const text = f['landingText_' + l];
+        return text === undefined ? [] : [[l, text]];
+      })),
       customCss: f.customCss,
     }, admin.email);
     setFlash(c, 'ok', 'branding_saved');

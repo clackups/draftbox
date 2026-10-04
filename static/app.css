@@ -289,7 +289,7 @@ pre { background: var(--code-bg); padding: 0.7rem 0.9rem; border-radius: 6px; ov
 .hero { text-align: center; padding: 2.5rem 1rem 1.5rem; }
 .hero h1 { font-size: 2.2rem; }
 .lead { font-size: 1.2rem; color: var(--muted); max-width: 40rem; margin: 0 auto 1.5rem; }
-.features { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
+.landing-text { max-width: 48rem; margin: 0 auto 1rem; }
 .logo-preview { max-height: 80px; }
 
 /* Rendered Markdown */

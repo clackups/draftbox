@@ -173,6 +173,9 @@ export interface Branding {
   logoType?: string;
   // HTML, restricted by util/sanitize.ts.
   footerText: string;
+  // Markdown shown on the landing page, by language. A missing or empty
+  // entry means the built-in text of that language (`landing.text`).
+  landingText: Record<Language, string>;
 }
 
 export const DEFAULT_BRANDING: Branding = {
@@ -187,4 +190,5 @@ export const DEFAULT_BRANDING: Branding = {
   customCss: '',
   hasLogo: false,
   footerText: '',
+  landingText: {},
 };
