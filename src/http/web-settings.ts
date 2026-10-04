@@ -7,8 +7,9 @@ import { VALIDITY_MONTHS, OTP_LIFETIME_DAYS, isExpired, type IssuedToken } from 
 import { type AccessToken, type Repo, type User, type UserTheme, contactEmailOf, USER_THEMES } from '../db/models.ts';
 import { MAX_DESCRIPTION, isValidEmail } from '../services/users.ts';
 import { html, type Html } from '../views/html.ts';
-import { csrfField, formDayOrNever, layout, localTime, tHtml } from '../views/layout.ts';
+import { csrfField, formDayOrNever, layout, localTime, storageUsage, tHtml } from '../views/layout.ts';
 import { ServiceError } from '../services/context.ts';
+import type { LimitStatus } from '../services/limits.ts';
 
 function settingsNav(page: Page, active: string): Html {
   const { t } = page;
@@ -20,7 +21,7 @@ function settingsNav(page: Page, active: string): Html {
 // `form` holds the submitted values when the page is shown again after a
 // validation error, so that the user can correct them instead of
 // retyping everything.
-function profilePage(page: Page, user: User, error?: string, form?: Record<string, string>): string {
+function profilePage(page: Page, user: User, limits: LimitStatus, error?: string, form?: Record<string, string>): string {
   const { t } = page;
   const pending = user.pendingContactEmail;
   const value = (key: string, saved: string) => form?.[key] ?? saved;
@@ -60,7 +61,12 @@ ${pending ? html`<div class="warning stack">
   <label class="check"><input type="checkbox" name="advancedMode" value="1" ${advanced ? 'checked' : ''}>
     <span><strong>${t('settings.advanced_mode')}</strong><br><small class="muted">${t('settings.advanced_mode_help')}</small></span></label>
   <div><button class="btn">${t('action.save')}</button></div>
-</form>`);
+</form>
+<section class="card stack"><h2>${t('settings.limits')}</h2>
+  ${limits.blockedBy ? html`<p class="warning">${t('error.' + limits.blockedBy)}</p>` : ''}
+  <p>${t('settings.storage_used')} <strong>${storageUsage(page, limits)}</strong></p>
+  <p>${limits.writableUntil ? tHtml(page, 'settings.writable_until', { date: localTime(page, limits.writableUntil, 'date') }) : t('settings.no_time_limit')}</p>
+</section>`);
 }
 
 function verifyPage(page: Page, user: User, email: string, code: string): string {
@@ -166,9 +172,9 @@ function issuedPage(page: Page, svc: Services, user: User, issued: IssuedToken, 
 }
 
 export function registerSettingsRoutes(app: Hono<AppEnv>, svc: Services): void {
-  app.get('/settings', (c) => {
+  app.get('/settings', async (c) => {
     const user = requireUser(c);
-    return c.html(profilePage(c.var.page, user));
+    return c.html(profilePage(c.var.page, user, await svc.limits.status(user)));
   });
 
   app.post('/settings', async (c) => {
@@ -192,7 +198,7 @@ export function registerSettingsRoutes(app: Hono<AppEnv>, svc: Services): void {
     } catch (err) {
       if (err instanceof ServiceError && (err.status === 400 || err.code === 'mail_failed')) {
         const fresh = (await svc.users.getById(user.id)) ?? user;
-        return c.html(profilePage(c.var.page, fresh, err.code, f), err.status as 400);
+        return c.html(profilePage(c.var.page, fresh, await svc.limits.status(fresh), err.code, f), err.status as 400);
       }
       throw err;
     }

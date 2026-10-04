@@ -2,9 +2,9 @@ import type { Hono } from 'hono';
 import { type AppEnv, type Page, type Services, formFields, requireAdmin, setFlash } from './app.ts';
 import type { Branding, Invitation, LimitGrant, Preregistration, Theme, User } from '../db/models.ts';
 import { html, type Html } from '../views/html.ts';
-import { csrfField, formDayOrNever, layout, localTime } from '../views/layout.ts';
+import { csrfField, formDayOrNever, layout, localTime, storageUsage } from '../views/layout.ts';
 import { MAX_LOGO_BYTES } from '../services/admin.ts';
-import { parseLimitGrant } from '../services/limits.ts';
+import { parseLimitGrant, type LimitStatus } from '../services/limits.ts';
 import { ServiceError } from '../services/context.ts';
 
 function adminNav(page: Page, active: string): Html {
@@ -43,7 +43,7 @@ function grantText(page: Page, g: LimitGrant | undefined): string {
   return `${quota} / ${days}`;
 }
 
-function usersPage(page: Page, svc: Services, users: Array<{ user: User; repos: number }>): string {
+function usersPage(page: Page, svc: Services, users: Array<{ user: User; repos: number; limits: LimitStatus }>): string {
   const { t } = page;
   const reg = svc.ctx.config.registration;
   const modes = [reg.open && t('admin.reg_open'), reg.invitations && t('admin.reg_invitations'), reg.preregistration && t('admin.reg_preregistration')]
@@ -51,10 +51,12 @@ function usersPage(page: Page, svc: Services, users: Array<{ user: User; repos: 
   return layout(page, t('admin.users'), html`${adminNav(page, '/admin/users')}
 <p class="muted">${t('admin.registration_modes', { modes })}</p>
 <section class="card"><div class="table-wrap"><table>
-<thead><tr><th>${t('field.email')}</th><th>${t('field.handle')}</th><th>${t('field.name')}</th><th>${t('admin.registered')}</th><th>${t('admin.repos')}</th><th>${t('admin.status')}</th><th></th></tr></thead>
-<tbody>${users.map(({ user: u, repos }) => html`<tr class="${u.blocked ? 'blocked' : ''}">
+<thead><tr><th>${t('field.email')}</th><th>${t('field.handle')}</th><th>${t('field.name')}</th><th>${t('admin.registered')}</th><th>${t('admin.repos')}</th><th>${t('admin.storage')}</th><th>${t('admin.writable_until')}</th><th>${t('admin.status')}</th><th></th></tr></thead>
+<tbody>${users.map(({ user: u, repos, limits }) => html`<tr class="${u.blocked ? 'blocked' : ''}">
   <td>${u.email}</td><td><a href="/${u.handle}">${u.handle}</a></td><td>${u.name}</td>
   <td>${localTime(page, u.createdAt, 'date')}</td><td>${repos}</td>
+  <td class="${limits.blockedBy === 'quota_exceeded' ? 'text-danger' : ''}">${storageUsage(page, limits)}</td>
+  <td class="${limits.blockedBy === 'time_limit_expired' ? 'text-danger' : ''}">${limits.writableUntil ? localTime(page, limits.writableUntil, 'date') : t('admin.unlimited')}</td>
   <td>${u.blocked ? html`<span class="badge badge-warn">${t('admin.blocked')}</span>` : html`<span class="badge">${t('admin.active')}</span>`}</td>
   <td class="actions">${u.id === page.user?.id ? html`<span class="muted">${t('admin.you')}</span>` : html`
     <form method="post" action="/admin/users/${u.id}/${u.blocked ? 'unblock' : 'block'}" class="inline">${csrfField(page)}
@@ -193,7 +195,9 @@ export function registerAdminRoutes(app: Hono<AppEnv>, svc: Services): void {
 
   app.get('/admin/users', async (c) => {
     const users = await svc.users.list();
-    const rows = await Promise.all(users.map(async (user) => ({ user, repos: await svc.users.countRepos(user.id) })));
+    const rows = await Promise.all(users.map(async (user) => ({
+      user, repos: await svc.users.countRepos(user.id), limits: await svc.limits.status(user),
+    })));
     return c.html(usersPage(c.var.page, svc, rows));
   });
 

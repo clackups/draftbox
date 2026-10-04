@@ -123,6 +123,7 @@ div.warning { margin: 0 0 1rem; }
 .card.flush { padding: 0; overflow: hidden; }
 .card.narrow { max-width: 480px; margin: 2rem auto; }
 .card.danger { border-color: var(--danger); }
+.text-danger { color: var(--danger); font-weight: 600; }
 .card.highlight { border-color: var(--accent); }
 .pad { padding: 1rem 1.2rem; }
 

@@ -381,6 +381,7 @@ test('an account over its limits is read-only in the web interface', async () =>
     tx.put(`users/${user.id}.json`, { ...u, ...patch });
   });
 
+  assert.match((await quinn.get('/settings')).text, /MB \/ 100 MB[\s\S]*no time limit/);
   await setLimits({ storageQuotaMb: 0.0001 });
   let page = await quinn.get('/quinn/notes');
   assert.match(page.text, /storage quota of this account is used up/);
@@ -393,6 +394,10 @@ test('an account over its limits is read-only in the web interface', async () =>
   assert.equal((await quinn.post('/new', { name: 'more', description: '', visibility: 'private' })).res.status, 403);
   // Reading continues to work.
   assert.equal((await quinn.get('/quinn/notes/raw/a.md')).text, 'a\n');
+  assert.match((await quinn.get('/settings')).text, /storage quota of this account is used up/);
+  const admin = new Browser(env);
+  await admin.login(ADMIN_EMAIL);
+  assert.match((await admin.get('/admin/users')).text, /<td class="text-danger">[\d.]+ MB \/ 0.0001 MB<\/td>/);
 
   await setLimits({ storageQuotaMb: null, writableUntil: new Date(Date.now() - 1000).toISOString() });
   page = await quinn.get('/quinn/notes');

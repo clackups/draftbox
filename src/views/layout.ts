@@ -2,6 +2,7 @@ import type { Page } from '../http/app.ts';
 import { LANGUAGES, languageName } from '../i18n/index.ts';
 import { escapeHtml, html, raw, type Html } from './html.ts';
 import { staticUrl } from '../http/static.ts';
+import type { LimitStatus } from '../services/limits.ts';
 
 export function csrfField(page: Page): Html {
   return html`<input type="hidden" name="_csrf" value="${page.csrf}">`;
@@ -35,6 +36,14 @@ export function formatDay(page: Page, iso: string | null | undefined): string {
 
 export function formDayOrNever(page: Page, iso: string | null): Html | string {
   return iso ? localTime(page, iso, 'date') : page.t('tokens.never');
+}
+
+// Storage used by an account, compared with its quota.
+export function storageUsage(page: Page, s: LimitStatus): string {
+  const used = page.t('admin.mb', { n: (s.usedBytes / (1024 * 1024)).toFixed(1) });
+  return s.storageQuotaMb === null
+    ? `${used} / ${page.t('admin.unlimited')}`
+    : `${used} / ${page.t('admin.mb', { n: s.storageQuotaMb })}`;
 }
 
 // Translates a message whose parameters are HTML fragments (such as
