@@ -143,7 +143,9 @@ export function createApp(svc: Services): Hono<AppEnv> {
       const u = await svc.users.getById(session.uid);
       if (u && !u.blocked && u.sessionEpoch === session.epoch) {
         user = u;
-        admin = session.admin;
+        // Checked on every request, so that removing an address from
+        // the configuration takes effect at once.
+        admin = svc.limits.isAdminAccount(u);
         c.set('session', session);
       }
     }

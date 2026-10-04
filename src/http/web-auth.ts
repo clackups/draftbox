@@ -65,7 +65,7 @@ async function completeLogin(c: Ctx, svc: Services, provider: string, profile: P
     throw err;
   }
   deleteCookie(c, INVITE_COOKIE, { path: '/' });
-  const data: SessionData = { uid: user.id, epoch: user.sessionEpoch, admin: isAdmin, provider, iat: Date.now() };
+  const data: SessionData = { uid: user.id, epoch: user.sessionEpoch, provider, iat: Date.now() };
   setCookie(c, SESSION_COOKIE, sessionCookie(svc, data), {
     path: '/', httpOnly: true, sameSite: 'Lax', secure: isSecure(svc), maxAge: cfg.sessionMaxAgeDays * 86400,
   });

@@ -727,3 +727,17 @@ test('contact email is verified by link; description and homepage appear in the 
   assert.equal(r.res.status, 400);
   assert.match(r.text, /Invalid homepage/);
 });
+
+test('administrator rights follow the configuration in existing sessions', async () => {
+  const admin = new Browser(env);
+  await admin.login(ADMIN_EMAIL);
+  assert.equal((await admin.get('/admin/users')).res.status, 200);
+  const emails = env.config.admins.emails;
+  env.config.admins.emails = [];
+  try {
+    assert.equal((await admin.get('/admin/users')).res.status, 403);
+  } finally {
+    env.config.admins.emails = emails;
+  }
+  assert.equal((await admin.get('/admin/users')).res.status, 200);
+});

@@ -11,7 +11,6 @@ export const INVITE_COOKIE = 'dbx_invite';
 export interface SessionData {
   uid: string;
   epoch: number;
-  admin: boolean;
   provider: string;
   iat: number;
 }
