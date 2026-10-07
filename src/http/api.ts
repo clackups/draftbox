@@ -35,6 +35,7 @@ import type { Hono } from 'hono';
 import type { AppEnv, Ctx, Services } from './app.ts';
 import { ServiceError } from '../services/context.ts';
 import { safeEqual } from '../util/crypto.ts';
+import { tokenPermissions } from '../services/tokens.ts';
 import { parseLimitGrant, parseQuotaUpdate, parseUntilUpdate } from '../services/limits.ts';
 import type { User } from '../db/models.ts';
 
@@ -128,6 +129,7 @@ export function registerApiRoutes(app: Hono<AppEnv>, svc: Services): void {
       token: result.value,
       name: result.token.name,
       access: result.token.access,
+      permissions: tokenPermissions(result.token),
       user: owner?.handle ?? null,
       repository: repo && owner ? `${owner.handle}/${repo.name}` : null,
       cloneUrl: repo && owner ? `${svc.ctx.config.baseUrl}/${owner.handle}/${repo.name}.git` : null,

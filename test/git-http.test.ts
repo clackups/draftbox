@@ -8,7 +8,7 @@ import { randomBytes } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { serve, type ServerType } from '@hono/node-server';
 import { Browser, adminApi, setup, type TestEnv } from './helpers.ts';
-import type { User } from '../src/db/models.ts';
+import type { TokenPermission, User } from '../src/db/models.ts';
 
 let env: TestEnv;
 let server: ServerType;
@@ -203,4 +203,70 @@ test('a push cannot add more than the remaining storage quota', async () => {
 
   await setQuota(null);
   await git(['push', '-q', 'origin', 'main'], work);
+});
+
+test('tokens cannot lose data unless granted the permission', async () => {
+  const repo = (await env.svc.repos.create(owner, { name: 'safe', description: '', visibility: 'private', initReadme: true }))!;
+  const grant = async (allow: TokenPermission[]) =>
+    (await env.svc.tokens.create(owner, { name: 'grant', repoId: repo.id, access: 'write', allow, validityMonths: null, withOtp: false }, repo)).value!;
+  const dir = mkdtempSync(join(env.dir, 'w-'));
+  await git(['clone', '-q', url('safe', rwToken), 'safe'], dir);
+  const work = join(dir, 'safe');
+  const commit = async (name: string) => {
+    writeFileSync(join(work, name), name + '\n');
+    await git(['add', name], work);
+    await git(['commit', '-qm', name], work);
+  };
+  const remote = async () => git(['ls-remote', url('safe', rwToken)]);
+
+  // Adding commits, branches and tags is allowed.
+  await commit('one.md');
+  await git(['push', '-q', 'origin', 'main'], work);
+  await git(['tag', 'v1'], work);
+  await git(['push', '-q', 'origin', 'v1', 'main:side', 'main:gone'], work);
+  const pushed = (await git(['rev-parse', 'HEAD'], work)).trim();
+
+  // Rewriting main is refused.
+  await git(['commit', '-q', '--amend', '-m', 'rewritten'], work);
+  let err = await gitFails(['push', '-q', '--force', 'origin', 'main'], work);
+  assert.match(err, /rejected/);
+  // Deleting a branch or a tag and moving a tag are refused.
+  err = await gitFails(['push', '-q', 'origin', '--delete', 'side'], work);
+  assert.match(err, /Deleting branches is not allowed|deletion prohibited/);
+  err = await gitFails(['push', '-q', 'origin', '--delete', 'v1'], work);
+  assert.match(err, /Deleting tags is not allowed|deletion prohibited/);
+  await git(['tag', '-f', 'v1'], work);
+  err = await gitFails(['push', '-q', '--force', 'origin', 'v1'], work);
+  assert.match(err, /Moving tags is not allowed/);
+  // A forced push to a branch that only adds commits is fine.
+  await git(['push', '-q', '--force', 'origin', 'HEAD:refs/heads/fresh'], work);
+  let refs = await remote();
+  assert.match(refs, new RegExp(`${pushed}\\s+refs/heads/main`));
+  assert.match(refs, new RegExp(`${pushed}\\s+refs/tags/v1`));
+  assert.match(refs, /refs\/heads\/side/);
+
+  // Each permission allows exactly its change.
+  await git(['remote', 'set-url', 'origin', url('safe', await grant(['delete_branches']))], work);
+  await git(['push', '-q', 'origin', '--delete', 'side'], work);
+  err = await gitFails(['push', '-q', 'origin', '--delete', 'v1'], work);
+  assert.match(err, /Deleting tags is not allowed/);
+  err = await gitFails(['push', '-q', '--force', 'origin', 'main'], work);
+  assert.match(err, /rejected/);
+
+  await git(['remote', 'set-url', 'origin', url('safe', await grant(['force_push']))], work);
+  await git(['push', '-q', '--force', 'origin', 'main'], work);
+  err = await gitFails(['push', '-q', 'origin', '--delete', 'gone'], work);
+  assert.match(err, /deletion prohibited|Deleting branches is not allowed/);
+
+  await git(['remote', 'set-url', 'origin', url('safe', await grant(['move_tags']))], work);
+  await git(['push', '-q', '--force', 'origin', 'v1'], work);
+
+  await git(['remote', 'set-url', 'origin', url('safe', await grant(['delete_tags']))], work);
+  await git(['push', '-q', 'origin', '--delete', 'v1'], work);
+
+  refs = await remote();
+  const head = (await git(['rev-parse', 'HEAD'], work)).trim();
+  assert.match(refs, new RegExp(`${head}\\s+refs/heads/main`));
+  assert.doesNotMatch(refs, /refs\/heads\/side|refs\/tags\/v1/);
+  assert.match(refs, /refs\/heads\/gone/);
 });

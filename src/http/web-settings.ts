@@ -4,7 +4,7 @@ import { type AppEnv, type Page, type Services, formFields, isSecure, requireUse
 import { LANG_COOKIE } from '../auth/session.ts';
 import { LANGUAGES, languageName } from '../i18n/index.ts';
 import { VALIDITY_MONTHS, OTP_LIFETIME_DAYS, type IssuedToken } from '../services/tokens.ts';
-import { type AccessToken, type Repo, type User, type UserTheme, contactEmailOf, USER_THEMES } from '../db/models.ts';
+import { type AccessToken, type Repo, type TokenPermission, type User, type UserTheme, contactEmailOf, TOKEN_PERMISSIONS, USER_THEMES } from '../db/models.ts';
 import { MAX_DESCRIPTION, isValidEmail } from '../services/users.ts';
 import { html, urlPath, type Html } from '../views/html.ts';
 import { csrfField, layout, localTime, storageUsage, tHtml } from '../views/layout.ts';
@@ -106,6 +106,11 @@ ${tokens.length === 0 ? html`<p class="muted">${t('tokens.none')}</p>` : tokenTa
     <label class="check"><input type="radio" name="access" value="write" checked> ${t('tokens.read_write')}</label>
     <label class="check"><input type="radio" name="access" value="read"> ${t('tokens.read_only')}</label>
   </fieldset>
+  ${user.prefs.advancedMode ? html`<fieldset><legend>${t('tokens.dangerous')}</legend>
+    <p class="muted">${t('tokens.dangerous_help')}</p>
+    ${TOKEN_PERMISSIONS.map((p) => html`<label class="check"><input type="checkbox" name="allow" value="${p}">
+      <span><strong>${t('tokens.perm_' + p)}</strong><br><small class="muted">${t('tokens.perm_' + p + '_help')}</small></span></label>`)}
+  </fieldset>` : ''}
   <label>${t('tokens.validity')}<select name="validity">
     <option value="">${t('tokens.never_expires')}</option>
     ${VALIDITY_MONTHS.map((m) => html`<option value="${m}">${t('tokens.months', { n: m })}</option>`)}
@@ -241,10 +246,14 @@ export function registerSettingsRoutes(app: Hono<AppEnv>, svc: Services): void {
     const f = await formFields(c);
     const repoId = f.repoId ? f.repoId : null;
     const repo = repoId ? await svc.repos.getById(repoId) : null;
+    const raw = (await c.req.parseBody({ all: true })).allow;
+    const allowed = (Array.isArray(raw) ? raw : [raw]).filter((v): v is TokenPermission => typeof v === 'string');
     const issued = await svc.tokens.create(user, {
       name: f.name ?? '',
       repoId,
       access: f.access === 'read' ? 'read' : 'write',
+      // Dangerous permissions are offered in advanced mode only.
+      allow: user.prefs.advancedMode ? allowed : [],
       validityMonths: f.validity ? Number(f.validity) : null,
       withOtp: f.otp === '1',
     }, repo);

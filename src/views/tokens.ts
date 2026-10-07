@@ -1,6 +1,6 @@
 import type { Page } from '../http/app.ts';
 import type { AccessToken, Repo } from '../db/models.ts';
-import { isExpired } from '../services/tokens.ts';
+import { isExpired, tokenPermissions } from '../services/tokens.ts';
 import { html, type Html } from './html.ts';
 import { csrfField, formDayOrNever, localTime, tHtml } from './layout.ts';
 
@@ -34,7 +34,8 @@ export function tokenTable(page: Page, tokens: AccessToken[], repos: Map<string,
     <td><strong>${tok.name}</strong>
       ${tok.otp && Date.parse(tok.otp.expiresAt) > now ? html`<br><span class="badge">${tHtml(page, 'tokens.otp_pending', { date: localTime(page, tok.otp.expiresAt) })}</span>` : ''}</td>
     <td>${tokenScope(page, tok, repos)}</td>
-    <td>${tok.access === 'write' ? t('tokens.read_write') : t('tokens.read_only')}</td>
+    <td>${tok.access === 'write' ? t('tokens.read_write') : t('tokens.read_only')}
+      ${tokenPermissions(tok).map((p) => html`<br><span class="badge badge-warn">${t('tokens.perm_' + p)}</span>`)}</td>
     <td>${localTime(page, tok.createdAt)}</td>
     <td>${isExpired(tok, now) ? html`<span class="badge badge-warn">${t('tokens.expired')}</span>` : formDayOrNever(page, tok.expiresAt)}</td>
     <td class="actions">

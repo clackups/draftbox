@@ -111,6 +111,11 @@ export interface Repo {
 
 export type TokenAccess = 'read' | 'write';
 
+// Ref changes that can lose data. A read-write token may only add
+// commits, branches and tags unless it is granted some of these.
+export type TokenPermission = 'force_push' | 'delete_branches' | 'delete_tags' | 'move_tags';
+export const TOKEN_PERMISSIONS: readonly TokenPermission[] = ['force_push', 'delete_branches', 'delete_tags', 'move_tags'];
+
 export interface PendingOtp {
   // HMAC of the 8-digit password, also used as the index key.
   key: string;
@@ -127,6 +132,8 @@ export interface AccessToken {
   // null means the token is valid for all repositories of the user.
   repoId: string | null;
   access: TokenAccess;
+  // Dangerous permissions of a read-write token. Absent means none.
+  allow?: TokenPermission[];
   secretHash: string;
   // Token value encrypted with the server key, so that one-time passwords
   // can be issued later without changing the value. Absent in tokens

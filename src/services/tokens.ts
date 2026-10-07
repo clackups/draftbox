@@ -1,6 +1,6 @@
 import type { Context } from './context.ts';
 import { ServiceError } from './context.ts';
-import type { AccessToken, Repo, TokenAccess, User } from '../db/models.ts';
+import { TOKEN_PERMISSIONS, type AccessToken, type Repo, type TokenAccess, type TokenPermission, type User } from '../db/models.ts';
 import { decrypt, encrypt, hmacHex, randomDigits, randomId, randomSecret, safeEqual, sha256hex } from '../util/crypto.ts';
 
 export const VALIDITY_MONTHS = [1, 3, 6, 12] as const;
@@ -13,6 +13,8 @@ export interface CreateTokenOptions {
   name: string;
   repoId: string | null;
   access: TokenAccess;
+  // Dangerous permissions; ignored for read-only tokens.
+  allow?: TokenPermission[];
   validityMonths: number | null;
   withOtp: boolean;
 }
@@ -74,6 +76,8 @@ export class TokenService {
     if (opts.validityMonths !== null && !(VALIDITY_MONTHS as readonly number[]).includes(opts.validityMonths)) {
       throw new ServiceError('invalid_validity');
     }
+    const access: TokenAccess = opts.access === 'read' ? 'read' : 'write';
+    const allow = access === 'write' ? TOKEN_PERMISSIONS.filter((p) => opts.allow?.includes(p)) : [];
     const id = randomId();
     const secret = randomSecret();
     const value = `dbx_${id}_${secret}`;
@@ -83,7 +87,8 @@ export class TokenService {
       userId: user.id,
       name,
       repoId: opts.repoId,
-      access: opts.access === 'read' ? 'read' : 'write',
+      access,
+      ...(allow.length ? { allow } : {}),
       secretHash: sha256hex(secret),
       encryptedValue: encrypt(this.ctx.config.encryptionKey, value),
       createdAt: now.toISOString(),
@@ -184,6 +189,12 @@ export class TokenService {
     if (!user || user.blocked) return null;
     return { token, user };
   }
+}
+
+// The dangerous permissions a token holds.
+export function tokenPermissions(token: AccessToken): TokenPermission[] {
+  if (token.access !== 'write') return [];
+  return TOKEN_PERMISSIONS.filter((p) => token.allow?.includes(p));
 }
 
 // Whether a token grants the requested access to a repository.

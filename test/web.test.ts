@@ -846,3 +846,38 @@ test('fountain screenplays are shown formatted', async () => {
   r = await wes.post('/preview', { name: 'notes.md', content: '# Hi' });
   assert.equal((JSON.parse(r.text) as { format: string }).format, 'markdown');
 });
+
+test('dangerous token permissions are offered in advanced mode only', async () => {
+  await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'pia@example.com' });
+  const pia = new Browser(env);
+  await pia.login('pia@example.com', 'Pia');
+  const user = (await env.svc.users.getByEmail('pia@example.com'))!;
+  const create = (name: string, access: string) => {
+    const form = new FormData();
+    for (const [k, v] of Object.entries({ name, repoId: '', access, validity: '' })) form.set(k, v);
+    form.append('allow', 'force_push');
+    form.append('allow', 'delete_tags');
+    form.append('allow', 'bogus');
+    return pia.post('/settings/tokens', form);
+  };
+  const tokenNamed = async (name: string) => (await env.svc.tokens.listForUser(user.id)).find((t) => t.name === name)!;
+
+  // Simple mode: no choice, and submitted permissions are ignored.
+  assert.doesNotMatch((await pia.get('/settings/tokens')).text, /name="allow"/);
+  await create('simple', 'write');
+  assert.equal((await tokenNamed('simple')).allow, undefined);
+
+  await pia.post('/settings', { name: 'Pia', handle: 'pia', language: 'en', theme: 'site', advancedMode: '1' });
+  const page = await pia.get('/settings/tokens');
+  assert.match(page.text, /Permissions that can lose data/);
+  assert.match(page.text, /name="allow" value="move_tags"/);
+  await create('dangerous', 'write');
+  assert.deepEqual((await tokenNamed('dangerous')).allow, ['force_push', 'delete_tags']);
+  // Read-only tokens never get them.
+  await create('reader', 'read');
+  assert.equal((await tokenNamed('reader')).allow, undefined);
+
+  const list = await pia.get('/settings/tokens');
+  assert.match(list.text, /badge-warn">Forced push</);
+  assert.match(list.text, /badge-warn">Delete tags</);
+});

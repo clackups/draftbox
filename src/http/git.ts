@@ -4,13 +4,22 @@
 // Authentication: HTTP Basic with an access token as password (the user
 // name is ignored), or a Bearer token. Public repositories can be read
 // without credentials.
+//
+// Data safety: a push may only add commits, branches and tags. Forced
+// pushes, deleting branches or tags and moving tags need the matching
+// permission of the token. This is checked per ref by an update hook
+// installed by the server, which runs after the pack is received and
+// can therefore test fast-forwards. receive.denyDeletes and
+// receive.denyNonFastForwards back it up should the hook not run.
 
 import { spawn } from 'node:child_process';
+import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import type { Hono } from 'hono';
 import type { AppEnv, Ctx, Services } from './app.ts';
-import type { Repo, User } from '../db/models.ts';
-import { tokenAllows, type TokenAuth } from '../services/tokens.ts';
+import type { Repo, TokenPermission, User } from '../db/models.ts';
+import { tokenAllows, tokenPermissions, type TokenAuth } from '../services/tokens.ts';
 
 const GIT_PATH_RE = /^\/([^/]+)\/([^/]+?)(?:\.git)?\/(info\/refs|git-upload-pack|git-receive-pack)$/;
 const SERVICES = new Set(['git-upload-pack', 'git-receive-pack']);
@@ -19,6 +28,68 @@ const MB = 1024 * 1024;
 const MAX_FETCH_REQUEST_BYTES = 64 * MB;
 // Push requests carry ref updates besides the pack.
 const PUSH_COMMAND_ALLOWANCE = MB;
+
+// Called by git receive-pack as `update <ref> <old> <new>` for each ref
+// of a push; a non-zero exit rejects that ref. DRAFTBOX_ALLOW lists the
+// permissions of the token, separated by spaces.
+const UPDATE_HOOK = `#!/bin/sh
+ref=$1
+old=$2
+new=$3
+
+allowed() {
+  case " $DRAFTBOX_ALLOW " in
+    *" $1 "*) return 0 ;;
+  esac
+  return 1
+}
+
+deny() {
+  echo "Draftbox: $1 is not allowed with this access token ($ref)." >&2
+  echo "Draftbox: the token can be given this permission in advanced mode." >&2
+  exit 1
+}
+
+is_zero() {
+  case $1 in
+    *[!0]*) return 1 ;;
+  esac
+  return 0
+}
+
+# Creating a ref loses nothing.
+is_zero "$old" && exit 0
+
+case $ref in
+  refs/tags/*)
+    if is_zero "$new"; then
+      allowed delete_tags || deny "Deleting tags"
+    else
+      allowed move_tags || deny "Moving tags"
+    fi
+    ;;
+  *)
+    if is_zero "$new"; then
+      allowed delete_branches || deny "Deleting branches"
+    elif ! allowed force_push; then
+      "\${DRAFTBOX_GIT:-git}" merge-base --is-ancestor "$old" "$new" 2>/dev/null || deny "A forced push"
+    fi
+    ;;
+esac
+exit 0
+`;
+
+// Writes the hooks used by receive-pack into dataDir/hooks and returns
+// that directory. The file is rewritten on every start so that it
+// matches the running version.
+function installHooks(dataDir: string): string {
+  const dir = join(dataDir, 'hooks');
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, 'update');
+  writeFileSync(file, UPDATE_HOOK, { mode: 0o755 });
+  chmodSync(file, 0o755);
+  return dir;
+}
 
 export function isGitRequestPath(path: string): boolean {
   return GIT_PATH_RE.test(path);
@@ -48,18 +119,34 @@ function pktLine(s: string): string {
   return (s.length + 4).toString(16).padStart(4, '0') + s;
 }
 
-function gitEnv(c: Ctx): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { PATH: process.env.PATH, GIT_CONFIG_NOSYSTEM: '1', HOME: '/nonexistent' };
+function gitEnv(c: Ctx, gitBinary: string, allow: TokenPermission[]): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    PATH: process.env.PATH,
+    GIT_CONFIG_NOSYSTEM: '1',
+    HOME: '/nonexistent',
+    DRAFTBOX_GIT: gitBinary,
+    DRAFTBOX_ALLOW: allow.join(' '),
+  };
   const proto = c.req.header('Git-Protocol');
   if (proto && /^[A-Za-z0-9=:.\-]+$/.test(proto)) env.GIT_PROTOCOL = proto;
   return env;
 }
 
-// maxPackBytes limits the pack a push may send (null: unlimited).
-function gitArgs(service: string, repoPath: string, advertise: boolean, maxPackBytes: number | null): string[] {
-  const args = ['-c', 'core.hooksPath=/dev/null'];
-  if (service === 'git-receive-pack') {
+interface PushOptions {
+  hooksDir: string;
+  allow: TokenPermission[];
+  // Limits the pack a push may send (null: unlimited).
+  maxPackBytes: number | null;
+}
+
+function gitArgs(service: string, repoPath: string, advertise: boolean, push: PushOptions): string[] {
+  const write = service === 'git-receive-pack';
+  const args = ['-c', `core.hooksPath=${write ? push.hooksDir : '/dev/null'}`];
+  if (write) {
+    const { allow, maxPackBytes } = push;
     args.push('-c', 'receive.fsckObjects=true', '-c', 'receive.denyDeleteCurrent=true');
+    if (!allow.includes('delete_branches') && !allow.includes('delete_tags')) args.push('-c', 'receive.denyDeletes=true');
+    if (!allow.includes('force_push')) args.push('-c', 'receive.denyNonFastForwards=true');
     if (maxPackBytes !== null) args.push('-c', `receive.maxInputSize=${maxPackBytes}`);
   }
   args.push(service.slice(4), '--stateless-rpc');
@@ -69,6 +156,7 @@ function gitArgs(service: string, repoPath: string, advertise: boolean, maxPackB
 }
 
 export function registerGitRoutes(app: Hono<AppEnv>, svc: Services): void {
+  const hooksDir = installHooks(svc.ctx.dataDir);
   app.use('*', async (c, next) => {
     const m = GIT_PATH_RE.exec(c.req.path);
     if (!m) return next();
@@ -124,9 +212,11 @@ export function registerGitRoutes(app: Hono<AppEnv>, svc: Services): void {
     }
 
     const repoPath = svc.ctx.repoPath(repo.id);
-    const env = gitEnv(c);
+    const allow = write && auth ? tokenPermissions(auth.token) : [];
+    const env = gitEnv(c, svc.ctx.config.gitBinary, allow);
     const advertise = action === 'info/refs';
-    const child = spawn(svc.ctx.config.gitBinary, gitArgs(service, repoPath, advertise, maxPackBytes), { env, stdio: ['pipe', 'pipe', 'pipe'] });
+    const args = gitArgs(service, repoPath, advertise, { hooksDir, allow, maxPackBytes });
+    const child = spawn(svc.ctx.config.gitBinary, args, { env, stdio: ['pipe', 'pipe', 'pipe'] });
     child.stderr.on('data', (d: Buffer) => console.error(`[git ${service}] ${d.toString().trim()}`));
     child.on('error', (err) => console.error(`[git ${service}] ${err.message}`));
 

@@ -22,6 +22,11 @@ Features
   per-repository, read-write or read-only, permanent or valid for
   1/3/6/12 months. A token can have a one-time 8-digit password that is
   exchanged for the token once.
+* Data safety: a push with a token can only add commits, branches and
+  tags. Forced pushes, deleting branches or tags and moving tags are
+  refused unless the token was granted that permission (advanced mode).
+  The checks run in a Git `update` hook that Draftbox writes to
+  `<dataDir>/hooks`, so the data directory must allow executing files.
 * Administration: block, unblock and delete users; invitation links;
   pre-registrations; branding (name, colors, logo, theme, custom CSS).
 * Web interface in English, Ukrainian and German, remembered per user.
@@ -106,7 +111,10 @@ Using Git
     git clone https://draftbox.example.com/<user>/<repo>.git
 
 Git asks for a user name (anything) and a password: use an access token
-created under "Access tokens".
+created under "Access tokens". By default a token cannot rewrite or
+remove anything that was pushed before; `git push --force`,
+`git push --delete` and replacing a tag are refused with a message
+naming the missing permission.
 
 APIs
 ----
