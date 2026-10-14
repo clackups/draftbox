@@ -90,6 +90,7 @@ function footer(page: Page): Html {
   return html`<footer class="footer">
   <div class="footer-text">${raw(sanitizeHtml(page.branding.footerText))}</div>
   <div class="footer-end">
+    <a href="/privacy">${page.t('footer.privacy')}</a>
     <div class="langs">${LANGUAGES.map((l) => l === page.lang
       ? html`<strong>${languageName(l)}</strong>`
       : html`<a href="/lang/${l}?next=${next}" hreflang="${l}">${languageName(l)}</a>`)}</div>

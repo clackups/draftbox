@@ -27,6 +27,9 @@ export interface MailConfig {
 }
 
 export interface Config {
+  // Name of the service as the operator of the site, used in the privacy
+  // statement.
+  serviceName: string;
   // Public URL of the service, without trailing slash. Used for OAuth
   // redirect URIs and links shown to users.
   baseUrl: string;
@@ -90,6 +93,7 @@ export interface Config {
 }
 
 const DEFAULTS: Config = {
+  serviceName: 'Draftbox',
   baseUrl: 'http://localhost:8080',
   host: '127.0.0.1',
   port: 8080,
@@ -145,6 +149,7 @@ export function finalizeConfig(partial: Partial<Config>, env: Record<string, str
     if (v !== null && !(Number.isFinite(v) && v > 0)) throw new Error(`limits.${key} must be a positive number or null`);
   }
 
+  cfg.serviceName = String(cfg.serviceName).trim() || DEFAULTS.serviceName;
   cfg.baseUrl = cfg.baseUrl.replace(/\/+$/, '');
   cfg.admins.emails = cfg.admins.emails.map((e) => e.trim().toLowerCase());
   if ('trustedProviders' in cfg.admins) {

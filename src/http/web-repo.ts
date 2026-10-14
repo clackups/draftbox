@@ -10,7 +10,7 @@ import { diffLines, hunks } from '../util/diff.ts';
 import { urlPath } from '../views/html.ts';
 import {
   type DocFormat, type FileChange, type RepoCtx, blobPage, branchesPage, commitPage, commitsPage, editPage, emptyRepoPage,
-  explorePage, homePage, landingPage, newRepoPage, profilePage, repoSettingsPage, repoUrl, tagsPage, treePage,
+  explorePage, homePage, landingPage, privacyPage, newRepoPage, profilePage, repoSettingsPage, repoUrl, tagsPage, treePage,
   uploadPage, withRef,
 } from '../views/repo.ts';
 
@@ -136,6 +136,8 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
   });
 
   app.get('/explore', async (c) => c.html(explorePage(c.var.page, await svc.repos.listPublic())));
+
+  app.get('/privacy', (c) => c.html(privacyPage(c.var.page, svc.ctx.config.serviceName)));
 
   app.get('/new', (c) => {
     requireUser(c);

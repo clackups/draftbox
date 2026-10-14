@@ -436,6 +436,14 @@ export function landingPage(page: Page): string {
 <section class="card markdown landing-text">${raw(renderMarkdown(landingText(page.branding, page.lang)))}</section>`);
 }
 
+export function privacyPage(page: Page, serviceName: string): string {
+  const { t } = page;
+  return layout(page, t('privacy.title'), html`<section class="card markdown privacy">
+  <h1>${t('privacy.title')}</h1>
+  ${raw(renderMarkdown(t('privacy.text', { service: serviceName })))}
+</section>`);
+}
+
 export function explorePage(page: Page, items: Array<{ repo: Repo; owner: User }>): string {
   const { t } = page;
   return layout(page, t('nav.explore'), html`<h1>${t('explore.title')}</h1><p class="muted">${t('explore.intro')}</p>${repoList(page, items, true)}`);

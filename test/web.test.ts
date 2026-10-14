@@ -644,6 +644,17 @@ test('landing page text is editable per language', async () => {
   assert.deepEqual((await env.svc.branding.get()).landingText, {});
 });
 
+test('privacy statement names the configured service and is linked in the footer', async () => {
+  const anon = new Browser(env);
+  assert.match((await anon.get('/')).text, /<a href="\/privacy">Privacy<\/a>/);
+  const page = await anon.get('/privacy');
+  assert.equal(page.res.status, 200);
+  assert.match(page.text, /<h1>Privacy statement<\/h1>/);
+  assert.match(page.text, new RegExp(`${env.config.serviceName} does not use, analyse, sell, publish or distribute your work`));
+  await anon.get('/lang/de?next=/privacy');
+  assert.match((await anon.get('/privacy')).text, /<h2>Ihre Werke geh/);
+});
+
 test('branding can be reset to the defaults', async () => {
   const admin = new Browser(env);
   await admin.login(ADMIN_EMAIL);

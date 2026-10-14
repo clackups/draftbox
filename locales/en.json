@@ -37,6 +37,10 @@
   "landing.lead": "A simple place to write, keep and share your documents, with every version saved.",
   "landing.text": "- **Write in your browser.** Create and edit Markdown and text files directly on the website, with a live preview.\n- **Nothing gets lost.** Every change is saved as a new version. You can always look back at what changed and when.\n- **Share when you want.** Repositories are private by default. Make them public only when you are ready to share.",
 
+  "footer.privacy": "Privacy",
+  "privacy.title": "Privacy statement",
+  "privacy.text": "This statement explains how {service} treats the work you keep here.\n\n## Your work belongs to you\n\nAll rights to the documents, files and other content that you store in {service} belong to you or to the respective rights holders. Storing your work here does not transfer any rights to {service}.\n\n## We do not use or distribute your work\n\n{service} does not use, analyse, sell, publish or distribute your work in any way, including for advertising or for training software. Your work is only stored and shown to you and to the people you give access to.\n\n## Who can see your work\n\nRepositories are private by default: only you and the access tokens you create can read them. If you make a repository public, anyone can read and copy its contents. You decide when to do that, and you can make it private again at any time.\n\n## What we keep about you\n\nTo run your account, {service} stores your email address, your name, your preferences and your access tokens. This information is used only to provide the service and is not shared with third parties.\n\n## Deleting your data\n\nWhen you delete a repository, or your account is deleted, the related content is removed from {service}.",
+
   "home.my_repos": "My repositories",
   "home.no_repos": "You do not have any repositories yet. A repository is a folder for your documents that remembers every change.",
   "home.create_first": "Create your first repository",
