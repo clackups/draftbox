@@ -3,8 +3,7 @@
   'use strict';
 
   // Timestamps rendered in the viewer's local timezone.
-  var lang = document.documentElement.lang;
-  var locale = lang === 'uk' ? 'uk-UA' : lang === 'de' ? 'de-DE' : 'en-GB';
+  var locale = document.documentElement.getAttribute('data-locale') || 'en-GB';
   Array.prototype.forEach.call(document.querySelectorAll('time[data-localtime]'), function (el) {
     var d = new Date(el.getAttribute('datetime'));
     if (isNaN(d.getTime())) return;

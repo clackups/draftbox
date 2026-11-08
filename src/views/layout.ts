@@ -1,5 +1,5 @@
 import type { Page } from '../http/app.ts';
-import { LANGUAGES, languageName } from '../i18n/index.ts';
+import { LANGUAGES, dateLocale, languageName } from '../i18n/index.ts';
 import { escapeHtml, html, raw, type Html } from './html.ts';
 import { staticUrl } from '../http/static.ts';
 import type { LimitStatus } from '../services/limits.ts';
@@ -12,7 +12,7 @@ export function csrfField(page: Page): Html {
 export function formatDate(page: Page, iso: string | number | null | undefined): string {
   if (iso === null || iso === undefined) return '';
   const d = typeof iso === 'number' ? new Date(iso * 1000) : new Date(iso);
-  const locale = page.lang === 'uk' ? 'uk-UA' : page.lang === 'de' ? 'de-DE' : 'en-GB';
+  const locale = dateLocale(page.lang);
   return d.toLocaleString(locale, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
@@ -31,7 +31,7 @@ export function localTime(page: Page, value: string | number | null | undefined,
 
 export function formatDay(page: Page, iso: string | null | undefined): string {
   if (!iso) return '';
-  const locale = page.lang === 'uk' ? 'uk-UA' : page.lang === 'de' ? 'de-DE' : 'en-GB';
+  const locale = dateLocale(page.lang);
   return new Date(iso).toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
@@ -105,7 +105,7 @@ export function layout(page: Page, title: string, body: Html, opts: { wide?: boo
     ? html`<div class="flash flash-${page.flash.kind}" role="status">${page.t(page.flash.key.startsWith('error.') ? page.flash.key : 'flash.' + page.flash.key)}</div>`
     : '';
   return html`<!doctype html>
-<html lang="${page.lang}"${theme ? raw(` data-theme="${theme}"`) : ''}>
+<html lang="${page.lang}" data-locale="${dateLocale(page.lang)}"${theme ? raw(` data-theme="${theme}"`) : ''}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

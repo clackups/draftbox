@@ -39,6 +39,14 @@ export function translator(lang: string): Translator {
   };
 }
 
+// Locale for formatting dates in a UI language. The pages pass it to
+// app.js in <html data-locale>.
+const DATE_LOCALES: Record<string, string> = { en: 'en-GB', uk: 'uk-UA', de: 'de-DE' };
+
+export function dateLocale(lang: string): string {
+  return DATE_LOCALES[lang] ?? DATE_LOCALES[DEFAULT_LANGUAGE];
+}
+
 // Native name of a language, as shown in the language selector.
 export function languageName(lang: string): string {
   return catalog(lang)['language.native'] ?? lang;

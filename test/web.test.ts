@@ -621,7 +621,7 @@ test('branding and language selection', async () => {
   await anon.get('/lang/de?next=/');
   assert.match((await anon.get('/')).text, /Anmelden/);
   const uk = new Browser(env);
-  assert.match((await uk.get('/', { 'Accept-Language': 'uk-UA,uk;q=0.9' })).text, /lang="uk"/);
+  assert.match((await uk.get('/', { 'Accept-Language': 'uk-UA,uk;q=0.9' })).text, /lang="uk" data-locale="uk-UA"/);
 });
 
 test('landing page text is editable per language', async () => {
