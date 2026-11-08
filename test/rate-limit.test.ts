@@ -1,7 +1,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { Browser, adminApi, setup } from './helpers.ts';
-import { rateKey } from '../src/http/api.ts';
+import { networkKey, rateKey } from '../src/http/api.ts';
 
 const env = await setup({ trustProxy: true });
 after(() => env.cleanup());
@@ -61,4 +61,36 @@ test('a failed token exchange leaves the one-time password valid', async () => {
   const res = await exchange();
   assert.equal(res.status, 200);
   assert.equal(((await res.json()) as { repository: string }).repository, `${user.handle}/proj`);
+});
+
+test('many networks guessing cannot lock out a user with the right password', async () => {
+  const post = (ip: string, password: string) => env.app.request('/api/v1/token-exchange', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': ip },
+    body: JSON.stringify({ password }),
+  });
+  // One network: 50 failures from different addresses block all of it.
+  for (let i = 1; i <= 50; i++) assert.equal((await post(`198.51.100.${i}`, '00000000')).status, 404);
+  assert.equal((await post('198.51.100.200', '00000000')).status, 429);
+
+  // 1000 failures spread over 100 networks trip the global limit.
+  for (let n = 0; n < 100; n++) {
+    for (let i = 1; i <= 10; i++) await post(`10.${n}.0.${i}`, '00000000');
+  }
+  // Addresses that failed are refused; a new one with a valid password works.
+  assert.equal((await post('10.0.0.1', '00000000')).status, 429);
+  await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'rita@example.com' });
+  await new Browser(env).login('rita@example.com');
+  const user = (await env.svc.users.getByEmail('rita@example.com'))!;
+  const issued = await env.svc.tokens.create(user, { name: 'x', repoId: null, access: 'read', validityMonths: null, withOtp: true }, null);
+  assert.equal((await post('192.0.2.44', issued.otp!)).status, 200);
+  // A new address that guesses wrong once is refused from then on.
+  assert.equal((await post('192.0.2.45', '00000000')).status, 404);
+  assert.equal((await post('192.0.2.45', '00000000')).status, 429);
+});
+
+test('network keys group /24 and /48 networks', () => {
+  assert.equal(networkKey('192.0.2.77'), '192.0.2.0/24');
+  assert.equal(networkKey('::ffff:192.0.2.77'), '192.0.2.0/24');
+  assert.equal(networkKey('2001:db8:1:2::1'), '2001:db8:1::/48');
 });

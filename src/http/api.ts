@@ -55,8 +55,13 @@ class RateLimiter {
   }
 
   blocked(key: string): boolean {
+    return this.failures(key) >= this.limit;
+  }
+
+  // Failed attempts of `key` in the current window.
+  failures(key: string): number {
     const cur = this.hits.get(key);
-    return cur !== undefined && cur.reset > Date.now() && cur.count >= this.limit;
+    return cur !== undefined && cur.reset > Date.now() ? cur.count : 0;
   }
 
   fail(key: string): void {
@@ -96,6 +101,16 @@ export function rateKey(ip: string): string {
   return groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, '')).join(':') + '::/64';
 }
 
+// Key of the network an address belongs to: its /24 (IPv4) or /48
+// (IPv6), which usually belong to one provider or customer.
+export function networkKey(ip: string): string {
+  const key = rateKey(ip);
+  const v4 = /^(\d+\.\d+\.\d+)\.\d+$/.exec(key);
+  if (v4) return v4[1] + '.0/24';
+  if (key.endsWith('::/64')) return key.split(':').slice(0, 3).join(':') + '::/48';
+  return key;
+}
+
 async function jsonBody(c: Ctx): Promise<Record<string, unknown>> {
   const type = c.req.header('Content-Type') ?? '';
   if (type.includes('application/json')) {
@@ -113,17 +128,24 @@ const MAX_API_BODY_BYTES = 64 * 1024;
 export function registerApiRoutes(app: Hono<AppEnv>, svc: Services): void {
   app.use('/api/*', bodyLimit({ maxSize: MAX_API_BODY_BYTES, onError: (c) => c.json({ error: 'payload_too_large' }, 413) }));
   const perIp = new RateLimiter(10, 15 * 60_000);
+  const perNetwork = new RateLimiter(50, 15 * 60_000);
   const global = new RateLimiter(1000, 60 * 60_000);
 
   app.post('/api/v1/token-exchange', async (c) => {
-    const key = rateKey(clientIp(c));
-    if (perIp.blocked(key) || global.blocked('all')) {
+    const ip = clientIp(c);
+    const key = rateKey(ip);
+    const net = networkKey(ip);
+    // Many failures overall point to guessing from many addresses. Then
+    // only addresses that have failed themselves are refused, so that
+    // the guessing cannot lock out users who enter their password right.
+    if (perIp.blocked(key) || perNetwork.blocked(net) || (global.blocked('all') && perIp.failures(key) > 0)) {
       return c.json({ error: 'rate_limited' }, 429, { 'Retry-After': '900' });
     }
     const body = await jsonBody(c);
     const password = String(body.password ?? '').replace(/\s+/g, '');
     const invalid = () => {
       perIp.fail(key);
+      perNetwork.fail(net);
       global.fail('all');
       return c.json({ error: 'invalid_password' }, 404);
     };
