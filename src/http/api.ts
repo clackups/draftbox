@@ -122,15 +122,20 @@ export function registerApiRoutes(app: Hono<AppEnv>, svc: Services): void {
     }
     const body = await jsonBody(c);
     const password = String(body.password ?? '').replace(/\s+/g, '');
-    const result = await svc.tokens.redeemOtp(password);
-    if (!result) {
+    const invalid = () => {
       perIp.fail(key);
       global.fail('all');
       return c.json({ error: 'invalid_password' }, 404);
-    }
-    const repo = result.token.repoId ? await svc.repos.getById(result.token.repoId) : null;
-    const owner = await svc.users.getById(result.token.userId);
+    };
+    // The details are looked up before the password is used up, so that
+    // a failure here leaves it valid for another attempt.
+    const pending = await svc.tokens.peekOtp(password);
+    if (!pending) return invalid();
+    const repo = pending.repoId ? await svc.repos.getById(pending.repoId) : null;
+    const owner = await svc.users.getById(pending.userId);
     const branch = repo ? await svc.repos.defaultBranch(await svc.repos.open(repo)) : null;
+    const result = await svc.tokens.redeemOtp(password);
+    if (!result) return invalid();
     return c.json({
       token: result.value,
       name: result.token.name,

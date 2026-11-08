@@ -158,6 +158,18 @@ export class TokenService {
 
   // Exchanges a one-time password for the token value. The password is
   // invalidated on success.
+  // The token a one-time password was assigned to, without using the
+  // password up; redeemOtp checks everything again.
+  async peekOtp(password: string): Promise<AccessToken | null> {
+    if (!/^\d{8}$/.test(password)) return null;
+    const key = this.otpKey(password);
+    const view = this.store.view();
+    const tokenId = await view.getText(`index/otp/${key}`);
+    if (!tokenId) return null;
+    const token = await view.get<AccessToken>(`tokens/${tokenId}.json`);
+    return token && token.otp && token.otp.key === key ? token : null;
+  }
+
   async redeemOtp(password: string): Promise<{ value: string; token: AccessToken } | null> {
     if (!/^\d{8}$/.test(password)) return null;
     const key = this.otpKey(password);
