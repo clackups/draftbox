@@ -257,17 +257,6 @@ class NodegitRepo implements GitRepo {
     if (typeof rc === 'number' && rc < 0) throw new RefConflictError(name);
   }
 
-  private async readRefTarget(name: string): Promise<string | null> {
-    const NG = ng();
-    try {
-      const ref = await NG.Reference.lookup(this.repo, name);
-      return ref.target().tostrS();
-    } catch (err) {
-      if (isNotFound(err)) return null;
-      throw err;
-    }
-  }
-
   async createAnnotatedTag(name: string, targetOid: string, message: string, tagger: { name: string; email: string }): Promise<string> {
     const NG = ng();
     const target = await NG.Object.lookup(this.repo, NG.Oid.fromString(targetOid), NG.Object.TYPE.COMMIT);
