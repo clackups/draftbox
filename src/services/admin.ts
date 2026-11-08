@@ -157,7 +157,11 @@ export class BrandingService {
       if (patch.defaultTheme !== undefined && (['auto', 'light', 'dark'] as Theme[]).includes(patch.defaultTheme)) {
         cur.defaultTheme = patch.defaultTheme;
       }
-      if (patch.customCss !== undefined) cur.customCss = sanitizeCss(patch.customCss.slice(0, 20000));
+      // Custom CSS is served as the separate text/css file
+      // /branding/theme.css. Remote resources it names (@import, url())
+      // are blocked by the Content-Security-Policy of every page (see
+      // app.ts), so the text is stored as entered.
+      if (patch.customCss !== undefined) cur.customCss = patch.customCss.slice(0, 20000);
       if (patch.footerText !== undefined) cur.footerText = sanitizeHtml(patch.footerText.trim().slice(0, MAX_FOOTER));
       if (patch.landingText !== undefined) {
         const texts = { ...cur.landingText };
@@ -210,10 +214,4 @@ export class BrandingService {
     const data = await this.ctx.store.view().getRaw('settings/logo');
     return data ? { data, type: b.logoType } : null;
   }
-}
-
-// Custom CSS is inserted into a <style> element; prevent it from closing
-// the element or pulling in remote resources.
-export function sanitizeCss(css: string): string {
-  return css.replace(/<\/?style/gi, '').replace(/<!--|-->/g, '').replace(/@import[^;]*;?/gi, '');
 }

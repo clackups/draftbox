@@ -607,7 +607,15 @@ test('branding and language selection', async () => {
   assert.match(css.text, /:root\{[^}]*--surface:#fefefe/);
   assert.match(css.text, /:root\[data-theme="dark"\]\{--bg:#101010;--surface:#202020;\}/);
   assert.match(css.text, /prefers-color-scheme: dark\)\{:root:not\(\[data-theme="light"\]\)\{--bg:#101010;--surface:#202020;/);
-  assert.doesNotMatch(css.text, /<\/style/);
+  // The custom CSS is a separate style sheet; the pages' CSP keeps it
+  // from loading anything from other sites.
+  assert.match(css.text, /body\{x:y\}/);
+  assert.match(css.res.headers.get('Content-Type') ?? '', /^text\/css/);
+  assert.equal(css.res.headers.get('X-Content-Type-Options'), 'nosniff');
+  const csp = page.res.headers.get('Content-Security-Policy') ?? '';
+  assert.match(csp, /default-src 'self'/);
+  assert.match(csp, /style-src 'self' 'unsafe-inline'/);
+  assert.match(csp, /img-src 'self' data:/);
 
   await anon.get('/lang/de?next=/');
   assert.match((await anon.get('/')).text, /Anmelden/);
