@@ -1110,3 +1110,24 @@ test('admin API errors are JSON with a matching status', async () => {
   assert.equal(r.status, 400);
   assert.deepEqual(await r.json(), { error: 'invalid_limit' });
 });
+
+test('deleting a repository or a user removes their tokens and pending passwords', async () => {
+  await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'tom@example.com' });
+  await new Browser(env).login('tom@example.com');
+  const tom = (await env.svc.users.getByEmail('tom@example.com'))!;
+  const repo = (await env.svc.repos.create(tom, { name: 'gone', description: '', visibility: 'private', initReadme: false }))!;
+  const scoped = await env.svc.tokens.create(tom, { name: 'scoped', repoId: repo.id, access: 'read', validityMonths: null, withOtp: true }, repo);
+  const global = await env.svc.tokens.create(tom, { name: 'global', repoId: null, access: 'read', validityMonths: null, withOtp: true }, null);
+  const otpIndex = async () => (await env.svc.ctx.store.view().list('index/otp')).length;
+  const before = await otpIndex();
+
+  await env.svc.repos.delete(repo, 'test');
+  assert.deepEqual((await env.svc.tokens.listForUser(tom.id)).map((t) => t.name), ['global']);
+  assert.equal(await env.svc.tokens.peekOtp(scoped.otp!), null);
+  assert.equal(await otpIndex(), before - 1);
+
+  await env.svc.users.delete(tom.id, 'test');
+  assert.deepEqual(await env.svc.tokens.listForUser(tom.id), []);
+  assert.equal(await env.svc.tokens.peekOtp(global.otp!), null);
+  assert.equal(await otpIndex(), before - 2);
+});

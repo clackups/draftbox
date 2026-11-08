@@ -1,5 +1,6 @@
 import type { Context } from './context.ts';
 import { ServiceError } from './context.ts';
+import type { Tx } from '../db/store.ts';
 import { TOKEN_PERMISSIONS, type AccessToken, type Repo, type TokenAccess, type TokenPermission, type User } from '../db/models.ts';
 import { decrypt, encrypt, hmacHex, randomDigits, randomId, randomSecret, safeEqual, sha256hex } from '../util/crypto.ts';
 
@@ -151,8 +152,7 @@ export class TokenService {
     await this.store.transact(`Revoke token ${tokenId}`, async (tx) => {
       const token = await tx.get<AccessToken>(`tokens/${tokenId}.json`);
       if (!token || token.userId !== user.id) throw new ServiceError('not_found', 404);
-      if (token.otp) tx.delete(`index/otp/${token.otp.key}`);
-      tx.delete(`tokens/${tokenId}.json`);
+      deleteToken(tx, token);
     });
   }
 
@@ -200,6 +200,21 @@ export class TokenService {
     const user = await view.get<User>(`users/${token.userId}.json`);
     if (!user || user.blocked) return null;
     return { token, user };
+  }
+}
+
+// Removes a token and the index entry of its pending one-time password.
+export function deleteToken(tx: Tx, token: AccessToken): void {
+  if (token.otp) tx.delete(`index/otp/${token.otp.key}`);
+  tx.delete(`tokens/${token.id}.json`);
+}
+
+// Removes the tokens that `match` selects, e.g. those of a deleted user
+// or repository.
+export async function deleteTokensWhere(tx: Tx, match: (token: AccessToken) => boolean): Promise<void> {
+  for (const name of await tx.list('tokens')) {
+    const token = await tx.get<AccessToken>(`tokens/${name}`);
+    if (token && match(token)) deleteToken(tx, token);
   }
 }
 
