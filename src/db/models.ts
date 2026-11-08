@@ -242,6 +242,12 @@ export interface Branding {
   landingText: Record<Language, string>;
 }
 
+// The stored branding settings completed with the defaults. `reader` is
+// a read view or a transaction of the metadata store.
+export async function readBranding(reader: { get<T>(path: string): Promise<T | null> }): Promise<Branding> {
+  return { ...DEFAULT_BRANDING, ...(await reader.get<Partial<Branding>>('settings/branding.json')) };
+}
+
 export const DEFAULT_BRANDING: Branding = {
   siteName: 'Draftbox',
   primaryColor: '#2f6f4f',

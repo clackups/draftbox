@@ -3,8 +3,8 @@ import type { Context } from './context.ts';
 import { ServiceError } from './context.ts';
 import type { ReadView, Tx } from '../db/store.ts';
 import {
-  type Branding, type Invitation, type Preregistration, type Repo, type User, type UserPrefs,
-  contactEmailOf, DEFAULT_BRANDING, USER_THEMES, normalizePdfPrefs, pdfPrefsOf,
+  type Invitation, type Preregistration, type Repo, type User, type UserPrefs,
+  contactEmailOf, readBranding, USER_THEMES, normalizePdfPrefs, pdfPrefsOf,
 } from '../db/models.ts';
 import { randomId, randomSecret, sha256hex } from '../util/crypto.ts';
 import { isSupportedLanguage, translator } from '../i18n/index.ts';
@@ -344,7 +344,7 @@ export class UserService {
     const view = this.store.view();
     const user = await this.getById(userId, view);
     if (!user?.pendingContactEmail) return;
-    const branding = { ...DEFAULT_BRANDING, ...(await view.get<Partial<Branding>>('settings/branding.json')) };
+    const branding = await readBranding(view);
     const t = translator(user.prefs.language);
     const params = { site: branding.siteName, name: user.name, hours: VERIFY_HOURS, link: `${this.ctx.config.baseUrl}/verify-email/${code}` };
     try {

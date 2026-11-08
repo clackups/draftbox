@@ -3,7 +3,7 @@
 import type { Context } from './context.ts';
 import { ServiceError } from './context.ts';
 import type { Branding, Invitation, LimitGrant, Preregistration, Theme } from '../db/models.ts';
-import { DEFAULT_BRANDING } from '../db/models.ts';
+import { DEFAULT_BRANDING, readBranding } from '../db/models.ts';
 import { randomId, randomSecret, sha256hex } from '../util/crypto.ts';
 import { sanitizeHtml } from '../util/sanitize.ts';
 import { isSupportedLanguage, translator } from '../i18n/index.ts';
@@ -143,15 +143,14 @@ export class BrandingService {
   async get(): Promise<Branding> {
     const head = this.ctx.store.head;
     if (this.cache && this.cache.head === head) return this.cache.value;
-    const stored = await this.ctx.store.view().get<Partial<Branding>>('settings/branding.json');
-    const value = { ...DEFAULT_BRANDING, ...stored };
+    const value = await readBranding(this.ctx.store.view());
     this.cache = { head, value };
     return value;
   }
 
   async update(patch: Partial<Pick<Branding, 'siteName' | 'primaryColor' | 'accentColor' | 'lightBackground' | 'darkBackground' | 'lightPanel' | 'darkPanel' | 'defaultTheme' | 'customCss' | 'footerText' | 'landingText'>>, actor: string): Promise<Branding> {
     return this.ctx.store.transact(`Update branding by ${actor}`, async (tx) => {
-      const cur = { ...DEFAULT_BRANDING, ...(await tx.get<Partial<Branding>>('settings/branding.json')) };
+      const cur = await readBranding(tx);
       if (patch.siteName !== undefined) cur.siteName = patch.siteName.trim().slice(0, 60) || DEFAULT_BRANDING.siteName;
       for (const key of ['primaryColor', 'accentColor', 'lightBackground', 'darkBackground', 'lightPanel', 'darkPanel'] as const) {
         const value = patch[key];
@@ -191,7 +190,7 @@ export class BrandingService {
       if (data.length > MAX_LOGO_BYTES) throw new ServiceError('logo_too_large');
     }
     await this.ctx.store.transact(`Update logo by ${actor}`, async (tx) => {
-      const cur = { ...DEFAULT_BRANDING, ...(await tx.get<Partial<Branding>>('settings/branding.json')) };
+      const cur = await readBranding(tx);
       if (data && type) {
         tx.putRaw('settings/logo', data);
         cur.hasLogo = true;
