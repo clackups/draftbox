@@ -32,6 +32,7 @@
 
 import { isIPv4, isIPv6 } from 'node:net';
 import type { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import type { AppEnv, Ctx, Services } from './app.ts';
 import { ServiceError } from '../services/context.ts';
 import { safeEqual } from '../util/crypto.ts';
@@ -105,7 +106,12 @@ async function jsonBody(c: Ctx): Promise<Record<string, unknown>> {
   return form as Record<string, unknown>;
 }
 
+// API requests are small JSON objects. The API is registered before the
+// web body limits in app.ts, so it needs its own.
+const MAX_API_BODY_BYTES = 64 * 1024;
+
 export function registerApiRoutes(app: Hono<AppEnv>, svc: Services): void {
+  app.use('/api/*', bodyLimit({ maxSize: MAX_API_BODY_BYTES, onError: (c) => c.json({ error: 'payload_too_large' }, 413) }));
   const perIp = new RateLimiter(10, 15 * 60_000);
   const global = new RateLimiter(1000, 60 * 60_000);
 

@@ -28,3 +28,13 @@ test('IPv6 addresses of one /64 share a rate limiting key', () => {
   assert.equal(rateKey('::ffff:192.0.2.1'), '192.0.2.1');
   assert.equal(rateKey('192.0.2.1'), '192.0.2.1');
 });
+
+test('API request bodies are limited in size', async () => {
+  const res = await env.app.request('/api/v1/token-exchange', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '203.0.113.50' },
+    body: JSON.stringify({ password: '0'.repeat(200 * 1024) }),
+  });
+  assert.equal(res.status, 413);
+  assert.deepEqual(await res.json(), { error: 'payload_too_large' });
+});
