@@ -41,6 +41,17 @@ function joinPath(dir: string, name: string): string {
   return [...dir.split('/'), ...name.split('/')].map((s) => s.trim()).filter(Boolean).join('/');
 }
 
+// The folder of a slash-separated path ('' at the top level).
+function dirname(path: string): string {
+  return path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+}
+
+// Whether `path` exists at the commit shown in `rc`.
+async function fileExists(rc: RepoCtx, path: string): Promise<boolean> {
+  const commit = rc.commitOid ? await rc.git.getCommit(rc.commitOid) : null;
+  return commit !== null && (await rc.git.lookupPath(commit.treeOid, path)) !== null;
+}
+
 // Extracts the file path following /<owner>/<repo>/<marker>/ in the URL.
 function subPath(c: Ctx, marker: string): string {
   const prefix = `/${c.req.param('owner')}/${c.req.param('repo')}/${marker}`;
@@ -230,7 +241,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     if (found.entries) return c.redirect(withRef(rc, repoUrl(rc, 'tree', path)));
     const data = await rc.git.readBlob(found.entry.oid);
     const text = asText(data);
-    const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+    const dir = dirname(path);
     const rendered = text !== null ? renderDocument(path, text, resolver(rc, dir)) : null;
     const lastChange = await svc.repos.lastChange(rc.git, rc.commitOid, path);
     return c.html(blobPage(rc, {
@@ -297,7 +308,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     const data = await rc.git.readBlob(found.entry.oid);
     const text = asText(data);
     if (text === null || data.length > MAX_EDIT_BYTES) throw new ServiceError('not_editable');
-    const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+    const dir = dirname(path);
     return c.html(editPage(rc, { path, dir, isNew: false, content: text, base: rc.commitOid, message: '' }));
   });
 
@@ -315,7 +326,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     if (!validFilePath(newPath)) return c.html(editPage(rc, { ...view, error: 'invalid_path' }), 400);
     const changes = new Map<string, Uint8Array | null>([[newPath, enc.encode(content)]]);
     if (newPath !== path) {
-      if (rc.commitOid && (await rc.git.lookupPath((await rc.git.getCommit(rc.commitOid))!.treeOid, newPath))) {
+      if (await fileExists(rc, newPath)) {
         return c.html(editPage(rc, { ...view, error: 'file_exists' }), 400);
       }
       changes.set(path, null);
@@ -353,7 +364,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     const view = { path: name, dir, isNew: true, content, base: f.base ?? '', message: f.message ?? '' };
     if (rc.readOnly) return c.html(editPage(rc, { ...view, error: rc.readOnly }), 403);
     if (!validFilePath(path)) return c.html(editPage(rc, { ...view, error: 'invalid_path' }), 400);
-    if (rc.commitOid && (await rc.git.lookupPath((await rc.git.getCommit(rc.commitOid))!.treeOid, path))) {
+    if (await fileExists(rc, path)) {
       return c.html(editPage(rc, { ...view, error: 'file_exists' }), 400);
     }
     const changes = new Map([[path, enc.encode(content)]]);
@@ -414,7 +425,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     if (!path) return c.notFound();
     await svc.repos.commitFiles(rc.git, rc.ref, f.base || null, new Map([[path, null]]), `Delete ${path}`, author(c));
     setFlash(c, 'ok', 'file_deleted');
-    const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+    const dir = dirname(path);
     // The directory disappears with its last file; fall back to the root.
     const head = await svc.repos.resolveBranch(rc.git, rc.ref);
     const dirExists = dir && head ? await svc.repos.treeAt(rc.git, head, dir) : null;
