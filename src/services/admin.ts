@@ -7,7 +7,7 @@ import { DEFAULT_BRANDING, readBranding } from '../db/models.ts';
 import { randomId, randomSecret, sha256hex } from '../util/crypto.ts';
 import { sanitizeHtml } from '../util/sanitize.ts';
 import { isSupportedLanguage, translator } from '../i18n/index.ts';
-import { emailKey, findUsableInvitation, normalizeEmail } from './users.ts';
+import { emailKey, findUsableInvitation, isValidEmail, normalizeEmail } from './users.ts';
 
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const LOGO_TYPES = new Set(['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp', 'image/gif']);
@@ -98,7 +98,7 @@ export class PreregistrationService {
 
   async add(email: string, note: string, limits: LimitGrant = {}): Promise<Preregistration> {
     const e = normalizeEmail(email);
-    if (!/^[^\s@]+@[^\s@]+$/.test(e)) throw new ServiceError('invalid_email');
+    if (!isValidEmail(e)) throw new ServiceError('invalid_email');
     const rec: Preregistration = { email: e, createdAt: this.ctx.now(), note: note.trim().slice(0, 200) };
     if (Object.keys(limits).length > 0) rec.limits = limits;
     await this.ctx.store.transact(`Pre-register ${e}`, async (tx) => {

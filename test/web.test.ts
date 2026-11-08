@@ -1095,6 +1095,12 @@ test('admin API errors are JSON with a matching status', async () => {
   let r = await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'not-an-email' });
   assert.equal(r.status, 400);
   assert.deepEqual(await r.json(), { error: 'invalid_email' });
+  // The same validation as everywhere else: no address without a domain
+  // dot, none with quotes or angle brackets.
+  for (const email of ['a@b', 'x"y@example.com', '<a@example.com>']) {
+    r = await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email });
+    assert.equal(r.status, 400, email);
+  }
   r = await adminApi(env, 'POST', '/api/v1/admin/invitations', { storageQuotaMb: -5 });
   assert.equal(r.status, 400);
   assert.deepEqual(await r.json(), { error: 'invalid_limit' });

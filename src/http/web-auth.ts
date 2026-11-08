@@ -5,6 +5,7 @@ import { INVITE_COOKIE, LANG_COOKIE, OAUTH_COOKIE, SESSION_COOKIE, type SessionD
 import { newVerifier, type ProviderProfile } from '../auth/oauth.ts';
 import { ServiceError } from '../services/context.ts';
 import { isSupportedLanguage } from '../i18n/index.ts';
+import { isValidEmail } from '../services/users.ts';
 import { randomId, randomSecret } from '../util/crypto.ts';
 import { html } from '../views/html.ts';
 import { csrfField, errorPage, layout } from '../views/layout.ts';
@@ -114,7 +115,7 @@ export function registerAuthRoutes(app: Hono<AppEnv>, svc: Services): void {
     if (!c.var.page.devLogin) return c.notFound();
     const f = await formFields(c);
     const email = (f.email ?? '').trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+$/.test(email)) throw new ServiceError('invalid_email');
+    if (!isValidEmail(email)) throw new ServiceError('invalid_email');
     return completeLogin(c, svc, 'dev', { subject: email, email, name: f.name ?? '' }, f.next ?? '/');
   });
 
