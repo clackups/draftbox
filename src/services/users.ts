@@ -11,11 +11,13 @@ import { isSupportedLanguage, translator } from '../i18n/index.ts';
 import { limitsForNewUser } from './limits.ts';
 
 // Handles that would collide with top-level web routes.
-const RESERVED_HANDLES = new Set([
+// First path segments of the site's own pages; test/web.test.ts checks
+// that every top-level route is listed.
+export const RESERVED_HANDLES = new Set([
   'admin', 'api', 'auth', 'login', 'logout', 'settings', 'new', 'explore',
   'static', 'invite', 'tokens', 'help', 'about', 'branding', 'favicon.ico',
   'robots.txt', 'draftbox', 'root', 'system', 'git', 'user', 'users', 'repos',
-  'preview', 'lang', 'theme', 'verify-email',
+  'preview', 'lang', 'theme', 'verify-email', 'privacy',
 ]);
 
 const SESSION_ID_RE = /^[0-9a-f]{32}$/;

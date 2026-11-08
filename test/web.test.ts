@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { ADMIN_EMAIL, Browser, adminApi, setup, type TestEnv } from './helpers.ts';
 import { DEFAULT_BRANDING } from '../src/db/models.ts';
 import { defaultLandingText } from '../src/services/admin.ts';
-import { HANDLE_RE } from '../src/services/users.ts';
+import { HANDLE_RE, RESERVED_HANDLES } from '../src/services/users.ts';
 
 let env: TestEnv;
 
@@ -959,6 +959,11 @@ test('save as PDF: dialog, last change and preferences', async () => {
   assert.doesNotMatch(page.text, /name="remember"/);
   assert.notEqual((await guest.post('/settings/pdf', { paper: 'A3' })).res.status, 204);
   assert.equal((await env.svc.users.getByEmail('pam@example.com'))!.prefs.pdf?.paper, 'A5');
+});
+
+test('top-level routes are reserved handles', () => {
+  const first = new Set(env.app.routes.map((r) => r.path.split('/')[1]).filter((seg) => seg && !seg.startsWith(':') && seg !== '*'));
+  for (const seg of first) assert.ok(RESERVED_HANDLES.has(seg), `route /${seg} is not a reserved handle`);
 });
 
 test('a shortened handle never ends with a hyphen', async () => {
