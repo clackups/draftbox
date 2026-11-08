@@ -107,6 +107,8 @@ export function limitsForNewUser(grant: LimitGrant | undefined, createdAt: strin
 
 export class LimitService {
   private ctx: Context;
+  // Tail of the queue of writes (pushes, web commits) of each account.
+  private writeQueues = new Map<string, Promise<void>>();
 
   constructor(ctx: Context) {
     this.ctx = ctx;
@@ -168,6 +170,41 @@ export class LimitService {
       tx.put(`users/${userId}.json`, user);
       return user;
     });
+  }
+
+  // Waits for the account's earlier writes, so that each write sees the
+  // storage used by the ones before it. Returns the function that lets
+  // the next write go ahead; it must be called exactly when the write
+  // is finished (calling it again does nothing).
+  async lockWrites(userId: string): Promise<() => void> {
+    const before = this.writeQueues.get(userId) ?? Promise.resolve();
+    let open: () => void = () => undefined;
+    const mine = new Promise<void>((resolve) => { open = resolve; });
+    const tail = before.then(() => mine);
+    this.writeQueues.set(userId, tail);
+    await before;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      open();
+      if (this.writeQueues.get(userId) === tail) this.writeQueues.delete(userId);
+    };
+  }
+
+  // Runs a write that adds up to `bytes` of data: after the account's
+  // earlier writes, and only if the account is writable and the data
+  // fits into the remaining quota.
+  async withRoom<T>(user: User, bytes: number, write: () => Promise<T>): Promise<T> {
+    const release = await this.lockWrites(user.id);
+    try {
+      const s = await this.status(user);
+      if (s.blockedBy) throw new ServiceError(s.blockedBy, 403);
+      if (s.storageQuotaMb !== null && s.usedBytes + bytes > s.storageQuotaMb * MB) throw new ServiceError('not_enough_space', 413);
+      return await write();
+    } finally {
+      release();
+    }
   }
 
   // Throws when the account may not create new commits.

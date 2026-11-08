@@ -196,70 +196,81 @@ export function registerGitRoutes(app: Hono<AppEnv>, svc: Services): void {
         : c.text('Repository not found\n', 404);
     }
 
-    // A push may not add more than the remaining storage quota.
-    let maxPackBytes: number | null = null;
-    if (write) {
-      const { blockedBy, storageQuotaMb, usedBytes } = await svc.limits.status(owner);
-      if (blockedBy === 'quota_exceeded') return c.text('Storage quota exceeded: the repository is read-only\n', 403);
-      if (blockedBy === 'time_limit_expired') return c.text('Account time limit expired: the repository is read-only\n', 403);
-      if (storageQuotaMb !== null) maxPackBytes = Math.max(1, Math.floor(storageQuotaMb * MB - usedBytes));
-    }
-    const maxBody = write
-      ? (maxPackBytes === null ? null : maxPackBytes + PUSH_COMMAND_ALLOWANCE)
-      : MAX_FETCH_REQUEST_BYTES;
-    const length = Number(c.req.header('Content-Length'));
-    if (maxBody !== null && Number.isFinite(length) && length > maxBody) {
-      return c.text(write ? 'Storage quota exceeded: the push is too large\n' : 'Request too large\n', 413);
-    }
-
-    const repoPath = svc.ctx.repoPath(repo.id);
-    const allow = write && auth ? tokenPermissions(auth.token) : [];
-    const env = gitEnv(c, svc.ctx.config.gitBinary, allow);
+    // A push may not add more than the remaining storage quota. Pushes
+    // and web commits of one account run one after another, so that each
+    // sees what the previous ones used; the lock is held until git ends.
     const advertise = action === 'info/refs';
-    const args = gitArgs(service, repoPath, advertise, { hooksDir, allow, maxPackBytes });
-    const child = spawn(svc.ctx.config.gitBinary, args, { env, stdio: ['pipe', 'pipe', 'pipe'] });
-    const output = processOutput(child, `git ${service}`);
-    child.stdin.on('error', () => undefined);
+    const release = write && !advertise ? await svc.limits.lockWrites(owner.id) : () => undefined;
+    let handedOver = false;
+    try {
+      let maxPackBytes: number | null = null;
+      if (write) {
+        const { blockedBy, storageQuotaMb, usedBytes } = await svc.limits.status(owner);
+        if (blockedBy === 'quota_exceeded') return c.text('Storage quota exceeded: the repository is read-only\n', 403);
+        if (blockedBy === 'time_limit_expired') return c.text('Account time limit expired: the repository is read-only\n', 403);
+        if (storageQuotaMb !== null) maxPackBytes = Math.max(1, Math.floor(storageQuotaMb * MB - usedBytes));
+      }
+      const maxBody = write
+        ? (maxPackBytes === null ? null : maxPackBytes + PUSH_COMMAND_ALLOWANCE)
+        : MAX_FETCH_REQUEST_BYTES;
+      const length = Number(c.req.header('Content-Length'));
+      if (maxBody !== null && Number.isFinite(length) && length > maxBody) {
+        return c.text(write ? 'Storage quota exceeded: the push is too large\n' : 'Request too large\n', 413);
+      }
 
-    const headers: Record<string, string> = {
-      'Cache-Control': 'no-cache, max-age=0, must-revalidate',
-      Pragma: 'no-cache',
-    };
+      const repoPath = svc.ctx.repoPath(repo.id);
+      const allow = write && auth ? tokenPermissions(auth.token) : [];
+      const env = gitEnv(c, svc.ctx.config.gitBinary, allow);
+      const args = gitArgs(service, repoPath, advertise, { hooksDir, allow, maxPackBytes });
+      const child = spawn(svc.ctx.config.gitBinary, args, { env, stdio: ['pipe', 'pipe', 'pipe'] });
+      child.on('close', release);
+      child.on('error', release);
+      handedOver = true;
+      const output = processOutput(child, `git ${service}`);
+      child.stdin.on('error', () => undefined);
 
-    if (advertise) {
-      child.stdin.end();
-      if ((await output.start) === 'failed') return c.text('Git failed\n', 500);
-      headers['Content-Type'] = `application/x-${service}-advertisement`;
-      const prefix = env.GIT_PROTOCOL?.includes('version=2') ? '' : pktLine(`# service=${service}\n`) + '0000';
-      const body = prefix ? prependStream(new TextEncoder().encode(prefix), output.body) : output.body;
-      return new Response(body, { status: 200, headers });
-    }
+      const headers: Record<string, string> = {
+        'Cache-Control': 'no-cache, max-age=0, must-revalidate',
+        Pragma: 'no-cache',
+      };
 
-    // Both the transferred and the decompressed size are limited.
-    let tooLarge = false;
-    const onTooLarge = () => { tooLarge = true; };
-    let input: ReadableStream<Uint8Array> | null = c.req.raw.body;
-    if (input && maxBody !== null) input = input.pipeThrough(sizeLimit(maxBody, onTooLarge));
-    if (input && (c.req.header('Content-Encoding') ?? '').toLowerCase() === 'gzip') {
-      input = input.pipeThrough(new DecompressionStream('gzip') as unknown as ReadableWritablePair<Uint8Array, Uint8Array>);
-      if (maxBody !== null) input = input.pipeThrough(sizeLimit(maxBody, onTooLarge));
+      if (advertise) {
+        child.stdin.end();
+        if ((await output.start) === 'failed') return c.text('Git failed\n', 500);
+        headers['Content-Type'] = `application/x-${service}-advertisement`;
+        const prefix = env.GIT_PROTOCOL?.includes('version=2') ? '' : pktLine(`# service=${service}\n`) + '0000';
+        const body = prefix ? prependStream(new TextEncoder().encode(prefix), output.body) : output.body;
+        return new Response(body, { status: 200, headers });
+      }
+
+      // Both the transferred and the decompressed size are limited.
+      let tooLarge = false;
+      const onTooLarge = () => { tooLarge = true; };
+      let input: ReadableStream<Uint8Array> | null = c.req.raw.body;
+      if (input && maxBody !== null) input = input.pipeThrough(sizeLimit(maxBody, onTooLarge));
+      if (input && (c.req.header('Content-Encoding') ?? '').toLowerCase() === 'gzip') {
+        input = input.pipeThrough(new DecompressionStream('gzip') as unknown as ReadableWritablePair<Uint8Array, Uint8Array>);
+        if (maxBody !== null) input = input.pipeThrough(sizeLimit(maxBody, onTooLarge));
+      }
+      if (input) {
+        const src = Readable.fromWeb(input as import('node:stream/web').ReadableStream);
+        src.on('error', () => child.kill());
+        src.pipe(child.stdin);
+      } else {
+        child.stdin.end();
+      }
+      // Git answers after reading the request, so an oversized request or
+      // a failure is known before the response starts.
+      const start = await output.start;
+      if (tooLarge && start !== 'output') {
+        return c.text(write ? 'Storage quota exceeded: the push is too large\n' : 'Request too large\n', 413);
+      }
+      if (start === 'failed') return c.text('Git failed\n', 500);
+      headers['Content-Type'] = `application/x-${service}-result`;
+      return new Response(output.body, { status: 200, headers });
+    } finally {
+      if (!handedOver) release();
     }
-    if (input) {
-      const src = Readable.fromWeb(input as import('node:stream/web').ReadableStream);
-      src.on('error', () => child.kill());
-      src.pipe(child.stdin);
-    } else {
-      child.stdin.end();
-    }
-    // Git answers after reading the request, so an oversized request or
-    // a failure is known before the response starts.
-    const start = await output.start;
-    if (tooLarge && start !== 'output') {
-      return c.text(write ? 'Storage quota exceeded: the push is too large\n' : 'Request too large\n', 413);
-    }
-    if (start === 'failed') return c.text('Git failed\n', 500);
-    headers['Content-Type'] = `application/x-${service}-result`;
-    return new Response(output.body, { status: 200, headers });
   });
 }
 

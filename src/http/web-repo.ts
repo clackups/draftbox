@@ -124,6 +124,19 @@ function requireWritable(rc: RepoCtx): void {
   if (rc.readOnly) throw new ServiceError(rc.readOnly, 403);
 }
 
+// Errors after which a write form is shown again with the user's input:
+// a conflicting change, too little storage left, invalid input.
+function formError(err: unknown): ServiceError | null {
+  return err instanceof ServiceError && (err.code === 'edit_conflict' || err.code === 'not_enough_space' || err.status === 400) ? err : null;
+}
+
+// Total size of the new file contents of a commit.
+function changeBytes(changes: Map<string, Uint8Array | null>): number {
+  let n = 0;
+  for (const data of changes.values()) n += data?.length ?? 0;
+  return n;
+}
+
 function author(c: Ctx): { name: string; email: string } {
   const u = requireUser(c);
   return { name: u.name, email: contactEmailOf(u) };
@@ -309,12 +322,12 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     }
     const message = (f.message ?? '').trim() || (newPath !== path ? `Rename ${path} to ${newPath}` : `Update ${path}`);
     try {
-      await svc.repos.commitFiles(rc.git, rc.ref, f.base || null, changes, message, author(c));
+      await svc.limits.withRoom(rc.owner, changeBytes(changes), () =>
+        svc.repos.commitFiles(rc.git, rc.ref, f.base || null, changes, message, author(c)));
     } catch (err) {
-      if (err instanceof ServiceError && (err.code === 'edit_conflict' || err.status === 400)) {
-        // Keep the user's text; saving again applies it on top of the latest version.
-        return c.html(editPage(rc, { ...view, base: rc.commitOid ?? '', error: err.code }), 409);
-      }
+      const e = formError(err);
+      // Keep the user's text; saving again applies it on top of the latest version.
+      if (e) return c.html(editPage(rc, { ...view, base: rc.commitOid ?? '', error: e.code }), e.status as 400);
       throw err;
     }
     setFlash(c, 'ok', 'file_saved');
@@ -343,13 +356,13 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     if (rc.commitOid && (await rc.git.lookupPath((await rc.git.getCommit(rc.commitOid))!.treeOid, path))) {
       return c.html(editPage(rc, { ...view, error: 'file_exists' }), 400);
     }
+    const changes = new Map([[path, enc.encode(content)]]);
     try {
-      await svc.repos.commitFiles(rc.git, rc.ref, f.base || null, new Map([[path, enc.encode(content)]]),
-        (f.message ?? '').trim() || `Create ${path}`, author(c));
+      await svc.limits.withRoom(rc.owner, changeBytes(changes), () =>
+        svc.repos.commitFiles(rc.git, rc.ref, f.base || null, changes, (f.message ?? '').trim() || `Create ${path}`, author(c)));
     } catch (err) {
-      if (err instanceof ServiceError && (err.code === 'edit_conflict' || err.status === 400)) {
-        return c.html(editPage(rc, { ...view, base: rc.commitOid ?? '', error: err.code }), 409);
-      }
+      const e = formError(err);
+      if (e) return c.html(editPage(rc, { ...view, base: rc.commitOid ?? '', error: e.code }), e.status as 400);
       throw err;
     }
     setFlash(c, 'ok', 'file_saved');
@@ -381,11 +394,11 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     }
     const message = str('message').trim() || (files.length === 1 ? `Upload ${joinPath(dir, files[0].name)}` : `Upload ${files.length} files`);
     try {
-      await svc.repos.commitFiles(rc.git, rc.ref, str('base') || null, changes, message, author(c));
+      await svc.limits.withRoom(rc.owner, changeBytes(changes), () =>
+        svc.repos.commitFiles(rc.git, rc.ref, str('base') || null, changes, message, author(c)));
     } catch (err) {
-      if (err instanceof ServiceError && (err.code === 'edit_conflict' || err.status === 400)) {
-        return c.html(uploadPage(rc, dir, rc.commitOid ?? '', err.code), 409);
-      }
+      const e = formError(err);
+      if (e) return c.html(uploadPage(rc, dir, rc.commitOid ?? '', e.code), e.status as 400);
       throw err;
     }
     setFlash(c, 'ok', 'files_uploaded');

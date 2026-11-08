@@ -1,5 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 import { ADMIN_EMAIL, Browser, adminApi, setup, type TestEnv } from './helpers.ts';
 import { DEFAULT_BRANDING } from '../src/db/models.ts';
 import { defaultLandingText } from '../src/services/admin.ts';
@@ -1056,4 +1057,36 @@ test('invitation validity is capped at a year', async () => {
   assert.equal(days, 365);
   const api = await adminApi(env, 'POST', '/api/v1/admin/invitations', { note: 'api', expiresDays: 10_000 });
   assert.equal(api.status, 201);
+});
+
+test('web uploads and edits stay within the storage quota, also when concurrent', async () => {
+  await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'quinn@example.com' });
+  const quinn = new Browser(env);
+  await quinn.login('quinn@example.com');
+  await quinn.post('/new', { name: 'files', description: '', visibility: 'private' });
+  await quinn.post('/quinn/files/new', { ref: 'main', base: '', dir: '', name: 'a.md', content: 'a\n', message: '' });
+  const user = (await env.svc.users.getByEmail('quinn@example.com'))!;
+  const used = await env.svc.limits.usedBytes(user.id);
+  // Room for about 1 MB more.
+  await env.svc.limits.update(user.id, { storageQuotaMb: (used + 1024 * 1024) / (1024 * 1024) }, 'test');
+  const base = async () => /name="base" value="([0-9a-f]{40})"/.exec((await quinn.get('/quinn/files/upload')).text)![1];
+  const upload = async (name: string, size: number, baseOid: string) => {
+    const form = new FormData();
+    form.set('ref', 'main');
+    form.set('base', baseOid);
+    form.set('dir', '');
+    form.set('message', '');
+    // Random bytes do not compress, so they take their size on disk.
+    form.set('files', new File([randomBytes(size)], name));
+    return quinn.post('/quinn/files/upload', form);
+  };
+  // Too large on its own.
+  let r = await upload('big.bin', 1500 * 1024, await base());
+  assert.equal(r.res.status, 413);
+  assert.match(r.text, /not enough space left in your storage quota/);
+  // Two uploads that only fit one at a time.
+  const b = await base();
+  const results = await Promise.all([upload('one.bin', 600 * 1024, b), upload('two.bin', 600 * 1024, b)]);
+  assert.deepEqual(results.map((x) => x.res.status).sort(), [302, 413]);
+  assert.ok((await env.svc.limits.usedBytes(user.id)) <= used + 1024 * 1024);
 });

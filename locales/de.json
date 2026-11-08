@@ -323,6 +323,7 @@
   "error.branch_exists": "Ein Branch mit diesem Namen existiert bereits.",
   "error.cannot_delete_main": "Der Haupt-Branch kann nicht gelöscht werden.",
   "error.edit_conflict": "Die Datei wurde während Ihrer Bearbeitung von jemand anderem (oder in einem anderen Fenster) geändert. Ihr Text ist unten erhalten; erneutes Speichern ersetzt damit die neueste Version.",
+  "error.not_enough_space": "In Ihrem Speicherkontingent ist für diese Änderung nicht genug Platz frei.",
   "error.ref_changed": "Es wurde geändert, seit Sie diese Seite geöffnet haben, und deshalb nicht gelöscht. Laden Sie die Seite neu und versuchen Sie es erneut.",
   "error.file_exists": "Eine Datei mit diesem Namen existiert bereits.",
   "error.handle_taken": "Dieser Benutzername ist bereits vergeben.",
