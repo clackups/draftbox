@@ -86,14 +86,13 @@ const GITHUB_ICON = '<svg viewBox="0 0 16 16" width="20" height="20" aria-hidden
   + ' 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>';
 
 function footer(page: Page): Html {
-  const next = encodeURIComponent(page.path);
   return html`<footer class="footer">
   <div class="footer-text">${raw(sanitizeHtml(page.branding.footerText))}</div>
   <div class="footer-end">
     <a href="/privacy">${page.t('footer.privacy')}</a>
     <div class="langs">${LANGUAGES.map((l) => l === page.lang
       ? html`<strong>${languageName(l)}</strong>`
-      : html`<a href="/lang/${l}?next=${next}" hreflang="${l}">${languageName(l)}</a>`)}</div>
+      : html`<form method="post" action="/lang/${l}" class="inline">${csrfField(page)}<input type="hidden" name="next" value="${page.path}"><button class="linkbtn" lang="${l}">${languageName(l)}</button></form>`)}</div>
     <a class="github" href="${GITHUB_URL}" title="GitHub" aria-label="GitHub" rel="noopener">${raw(GITHUB_ICON)}</a>
   </div>
 </footer>`;

@@ -983,3 +983,21 @@ test('a shortened handle never ends with a hyphen', async () => {
   assert.match(user.handle, HANDLE_RE);
   assert.equal((await b.get('/' + user.handle)).res.status, 200);
 });
+
+test('the saved language changes only through a CSRF-checked POST', async () => {
+  await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'lena@example.com' });
+  const lena = new Browser(env);
+  await lena.login('lena@example.com');
+  const lang = async () => (await env.svc.users.getByEmail('lena@example.com'))!.prefs.language;
+  const page = await lena.get('/explore');
+  assert.match(page.text, /<form method="post" action="\/lang\/de" class="inline"><input type="hidden" name="_csrf" value="[^"]+"><input type="hidden" name="next" value="\/explore"><button class="linkbtn" lang="de">/);
+  // A link from another site cannot change it.
+  assert.equal((await lena.get('/lang/de?next=/')).res.status, 302);
+  assert.equal(await lang(), 'en');
+  assert.equal((await lena.post('/lang/de', { next: '/explore' }, { csrf: false })).res.status, 403);
+  assert.equal(await lang(), 'en');
+  const r = await lena.post('/lang/de', { next: '/explore' });
+  assert.equal(r.res.headers.get('Location'), '/explore');
+  assert.equal(await lang(), 'de');
+  await lena.post('/lang/en', { next: '/' });
+});

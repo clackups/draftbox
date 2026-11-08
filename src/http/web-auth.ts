@@ -159,16 +159,22 @@ export function registerAuthRoutes(app: Hono<AppEnv>, svc: Services): void {
     return c.redirect('/');
   });
 
-  app.get('/lang/:code', async (c) => {
-    const lang = c.req.param('code');
-    const next = safeNext(c.req.query('next'));
-    if (!isSupportedLanguage(lang)) return c.redirect(next);
-    setCookie(c, LANG_COOKIE, lang, { path: '/', sameSite: 'Lax', secure: isSecure(svc), maxAge: 365 * 86400 });
+  // Language switch. The footer posts it (checked against CSRF), since
+  // it changes the saved preference of a signed-in user. GET, for old
+  // links, only sets the cookie of anonymous visitors.
+  const switchLanguage = async (c: Ctx, save: boolean) => {
+    const lang = c.req.param('code') ?? '';
+    const fields = save ? await formFields(c) : {};
+    const next = safeNext(save ? fields.next : c.req.query('next'));
     const user = c.var.page.user;
+    if (!isSupportedLanguage(lang) || (user && !save)) return c.redirect(next);
+    setCookie(c, LANG_COOKIE, lang, { path: '/', sameSite: 'Lax', secure: isSecure(svc), maxAge: 365 * 86400 });
     if (user && user.prefs.language !== lang) {
       await svc.users.updateProfile(user.id, { prefs: { language: lang } });
     }
     setFlash(c, 'ok', 'language_changed');
     return c.redirect(next);
-  });
+  };
+  app.get('/lang/:code', (c) => switchLanguage(c, false));
+  app.post('/lang/:code', (c) => switchLanguage(c, true));
 }
