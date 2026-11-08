@@ -20,6 +20,7 @@ import type { Hono } from 'hono';
 import type { AppEnv, Ctx, Services } from './app.ts';
 import type { Repo, TokenPermission, User } from '../db/models.ts';
 import { tokenAllows, tokenPermissions, type TokenAuth } from '../services/tokens.ts';
+import { processOutput } from '../util/process.ts';
 
 const GIT_PATH_RE = /^\/([^/]+)\/([^/]+?)(?:\.git)?\/(info\/refs|git-upload-pack|git-receive-pack)$/;
 const SERVICES = new Set(['git-upload-pack', 'git-receive-pack']);
@@ -217,8 +218,8 @@ export function registerGitRoutes(app: Hono<AppEnv>, svc: Services): void {
     const advertise = action === 'info/refs';
     const args = gitArgs(service, repoPath, advertise, { hooksDir, allow, maxPackBytes });
     const child = spawn(svc.ctx.config.gitBinary, args, { env, stdio: ['pipe', 'pipe', 'pipe'] });
-    child.stderr.on('data', (d: Buffer) => console.error(`[git ${service}] ${d.toString().trim()}`));
-    child.on('error', (err) => console.error(`[git ${service}] ${err.message}`));
+    const output = processOutput(child, `git ${service}`);
+    child.stdin.on('error', () => undefined);
 
     const headers: Record<string, string> = {
       'Cache-Control': 'no-cache, max-age=0, must-revalidate',
@@ -227,19 +228,21 @@ export function registerGitRoutes(app: Hono<AppEnv>, svc: Services): void {
 
     if (advertise) {
       child.stdin.end();
+      if ((await output.start) === 'failed') return c.text('Git failed\n', 500);
       headers['Content-Type'] = `application/x-${service}-advertisement`;
       const prefix = env.GIT_PROTOCOL?.includes('version=2') ? '' : pktLine(`# service=${service}\n`) + '0000';
-      const out = Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>;
-      const body = prefix ? prependStream(new TextEncoder().encode(prefix), out) : out;
+      const body = prefix ? prependStream(new TextEncoder().encode(prefix), output.body) : output.body;
       return new Response(body, { status: 200, headers });
     }
 
     // Both the transferred and the decompressed size are limited.
+    let tooLarge = false;
+    const onTooLarge = () => { tooLarge = true; };
     let input: ReadableStream<Uint8Array> | null = c.req.raw.body;
-    if (input && maxBody !== null) input = input.pipeThrough(sizeLimit(maxBody));
+    if (input && maxBody !== null) input = input.pipeThrough(sizeLimit(maxBody, onTooLarge));
     if (input && (c.req.header('Content-Encoding') ?? '').toLowerCase() === 'gzip') {
       input = input.pipeThrough(new DecompressionStream('gzip') as unknown as ReadableWritablePair<Uint8Array, Uint8Array>);
-      if (maxBody !== null) input = input.pipeThrough(sizeLimit(maxBody));
+      if (maxBody !== null) input = input.pipeThrough(sizeLimit(maxBody, onTooLarge));
     }
     if (input) {
       const src = Readable.fromWeb(input as import('node:stream/web').ReadableStream);
@@ -248,20 +251,31 @@ export function registerGitRoutes(app: Hono<AppEnv>, svc: Services): void {
     } else {
       child.stdin.end();
     }
-    child.stdin.on('error', () => undefined);
+    // Git answers after reading the request, so an oversized request or
+    // a failure is known before the response starts.
+    const start = await output.start;
+    if (tooLarge && start !== 'output') {
+      return c.text(write ? 'Storage quota exceeded: the push is too large\n' : 'Request too large\n', 413);
+    }
+    if (start === 'failed') return c.text('Git failed\n', 500);
     headers['Content-Type'] = `application/x-${service}-result`;
-    return new Response(Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>, { status: 200, headers });
+    return new Response(output.body, { status: 200, headers });
   });
 }
 
-// Passes a stream through, failing once it exceeds max bytes.
-function sizeLimit(max: number): TransformStream<Uint8Array, Uint8Array> {
+// Passes a stream through, failing (and calling onExceeded) once it
+// exceeds max bytes.
+function sizeLimit(max: number, onExceeded: () => void): TransformStream<Uint8Array, Uint8Array> {
   let total = 0;
   return new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
       total += chunk.byteLength;
-      if (total > max) controller.error(new Error('request body too large'));
-      else controller.enqueue(chunk);
+      if (total > max) {
+        onExceeded();
+        controller.error(new Error('request body too large'));
+      } else {
+        controller.enqueue(chunk);
+      }
     },
   });
 }

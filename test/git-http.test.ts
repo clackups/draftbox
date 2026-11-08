@@ -205,6 +205,33 @@ test('a push cannot add more than the remaining storage quota', async () => {
   await git(['push', '-q', 'origin', 'main'], work);
 });
 
+test('a malformed push gets an error status, not an empty 200', async () => {
+  const res = await fetch(`${base}/dana/secret.git/git-receive-pack`, {
+    method: 'POST', body: new Uint8Array(64 * 1024).fill(0x7a),
+    headers: { Authorization: 'Bearer ' + rwToken, 'Content-Type': 'application/x-git-receive-pack-request' },
+  });
+  assert.equal(res.status, 500);
+});
+
+test('git failures are reported, not served as empty or truncated answers', async () => {
+  const config = env.svc.ctx.config as { gitBinary: string };
+  const saved = config.gitBinary;
+  config.gitBinary = join(env.dir, 'no-such-git');
+  try {
+    const res = await fetch(`${base}/dana/secret.git/info/refs?service=git-upload-pack`, { headers: { Authorization: 'Bearer ' + rwToken } });
+    assert.equal(res.status, 500);
+    const b = new Browser(env);
+    await b.login('dana@example.com');
+    assert.equal((await b.get('/dana/secret/archive.zip')).res.status, 500);
+  } finally {
+    config.gitBinary = saved;
+  }
+  const b = new Browser(env);
+  await b.login('dana@example.com');
+  const zip = await b.get('/dana/secret/archive.zip');
+  assert.equal(zip.res.status, 200);
+});
+
 test('tokens cannot lose data unless granted the permission', async () => {
   const repo = (await env.svc.repos.create(owner, { name: 'safe', description: '', visibility: 'private', initReadme: true }))!;
   const grant = async (allow: TokenPermission[]) =>

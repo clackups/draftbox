@@ -260,7 +260,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     // Repository names are limited to [A-Za-z0-9._-]; refs may hold slashes.
     const suffix = rc.ref === DEFAULT_BRANCH ? '' : '-' + (rc.refKind === 'commit' ? rc.ref.slice(0, 10) : rc.ref.replace(/[^A-Za-z0-9._-]+/g, '-'));
     const name = rc.repo.name + suffix;
-    return new Response(svc.repos.archive(rc.repo, rc.commitOid, name), {
+    return new Response(await svc.repos.archive(rc.repo, rc.commitOid, name), {
       status: 200,
       headers: {
         'Content-Type': 'application/zip',
