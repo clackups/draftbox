@@ -23,7 +23,9 @@ function settingsNav(page: Page, active: string): Html {
 // `form` holds the submitted values when the page is shown again after a
 // validation error, so that the user can correct them instead of
 // retyping everything.
-function profilePage(page: Page, user: User, limits: LimitStatus, error?: string, form?: Record<string, string>): string {
+// `savedOthers`: the other changes were saved; only the contact address
+// (the error) was not.
+function profilePage(page: Page, user: User, limits: LimitStatus, error?: string, form?: Record<string, string>, savedOthers = false): string {
   const { t } = page;
   const pending = user.pendingContactEmail;
   const value = (key: string, saved: string) => form?.[key] ?? saved;
@@ -32,7 +34,7 @@ function profilePage(page: Page, user: User, limits: LimitStatus, error?: string
   const advanced = form ? form.advancedMode === '1' : user.prefs.advancedMode;
   return layout(page, t('nav.settings'), html`<h1>${t('nav.settings')}</h1>
 ${settingsNav(page, '/settings')}
-${error ? html`<p class="flash flash-error">${t('error.' + error)}</p>` : ''}
+${error ? html`<p class="flash flash-error">${savedOthers ? t('settings.saved_except_contact') + ' ' : ''}${t('error.' + error)}</p>` : ''}
 ${pending ? html`<div class="warning stack">
   <span>${t('settings.contact_pending', { email: pending.email, current: contactEmailOf(user) })}</span>
   <div class="row">
@@ -176,9 +178,9 @@ export function registerSettingsRoutes(app: Hono<AppEnv>, svc: Services): void {
     const user = requireUser(c);
     const f = await formFields(c);
     let contact: Awaited<ReturnType<typeof svc.users.requestContactEmail>> = 'unchanged';
+    // Fields missing from the form are left unchanged.
+    const contactEmail = f.contactEmail === undefined ? undefined : f.contactEmail.trim();
     try {
-      // Fields missing from the form are left unchanged.
-      const contactEmail = f.contactEmail === undefined ? undefined : f.contactEmail.trim();
       if (contactEmail === '') throw new ServiceError('contact_email_required');
       if (contactEmail !== undefined && !isValidEmail(contactEmail)) throw new ServiceError('invalid_email');
       const updated = await svc.users.updateProfile(user.id, {
@@ -189,11 +191,22 @@ export function registerSettingsRoutes(app: Hono<AppEnv>, svc: Services): void {
         prefs: { language: f.language, theme: f.theme as UserTheme, advancedMode: f.advancedMode === '1' },
       });
       setCookie(c, LANG_COOKIE, updated.prefs.language, { path: '/', sameSite: 'Lax', secure: isSecure(svc), maxAge: 365 * 86400 });
+    } catch (err) {
+      if (err instanceof ServiceError && err.status === 400) {
+        const fresh = (await svc.users.getById(user.id)) ?? user;
+        return c.html(profilePage(c.var.page, fresh, await svc.limits.status(fresh), err.code, f), err.status as 400);
+      }
+      throw err;
+    }
+    // The profile is saved at this point: a failed address change must
+    // not look like a failed save.
+    try {
       if (contactEmail !== undefined) contact = await svc.users.requestContactEmail(user.id, contactEmail);
     } catch (err) {
       if (err instanceof ServiceError && (err.status === 400 || err.code === 'mail_failed')) {
         const fresh = (await svc.users.getById(user.id)) ?? user;
-        return c.html(profilePage(c.var.page, fresh, await svc.limits.status(fresh), err.code, f), err.status as 400);
+        const form = { contactEmail: f.contactEmail ?? '' };
+        return c.html(profilePage(c.var.page, fresh, await svc.limits.status(fresh), err.code, form, true), err.status as 400);
       }
       throw err;
     }

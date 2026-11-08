@@ -733,6 +733,14 @@ test('contact email is verified by link; description and homepage appear in the 
   assert.match((await dana.get('/settings')).text, /less than a minute ago/);
   assert.equal(env.mailer.sent.length, before + 1);
 
+  // A failed address change does not look like a failed save.
+  r = await dana.post('/settings', { name: 'Dana D.', handle: 'dana', language: 'en', theme: 'site', contactEmail: 'other@example.org' });
+  assert.equal(r.res.status, 400);
+  assert.match(r.text, /Your other changes were saved, but the contact email was not changed: A confirmation link was sent less than a minute ago/);
+  assert.match(r.text, /name="contactEmail" value="other@example.org"/);
+  assert.match(r.text, /name="name" value="Dana D."/);
+  assert.equal((await env.svc.users.getByEmail('dana@example.com'))!.name, 'Dana D.');
+
   // The link works without a session and needs an explicit confirmation.
   const anon = new Browser(env);
   const confirm = await anon.get(link);

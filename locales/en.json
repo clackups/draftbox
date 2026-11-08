@@ -69,6 +69,7 @@
   "settings.no_time_limit": "Your account has no time limit.",
   "settings.primary_email_help": "The address you log in with. It is not shown to other people.",
   "settings.contact_email": "Contact email",
+  "settings.saved_except_contact": "Your other changes were saved, but the contact email was not changed:",
   "settings.contact_email_help": "Shown in your public profile and recorded as the author of changes you save in the browser. A new address must be confirmed through a link we email to it.",
   "settings.contact_pending": "We sent a confirmation link to {email}. Until you open it, {current} stays your contact email.",
   "settings.contact_resend": "Send the link again",

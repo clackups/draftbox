@@ -69,6 +69,7 @@
   "settings.no_time_limit": "Ihr Konto hat keine zeitliche Begrenzung.",
   "settings.primary_email_help": "Die Adresse, mit der Sie sich anmelden. Sie wird anderen nicht angezeigt.",
   "settings.contact_email": "Kontakt-E-Mail",
+  "settings.saved_except_contact": "Ihre übrigen Änderungen wurden gespeichert, die Kontakt-E-Mail wurde jedoch nicht geändert:",
   "settings.contact_email_help": "Wird in Ihrem öffentlichen Profil angezeigt und als Autor der im Browser gespeicherten Änderungen eingetragen. Eine neue Adresse muss über einen Link bestätigt werden, den wir an sie senden.",
   "settings.contact_pending": "Wir haben einen Bestätigungslink an {email} gesendet. Bis Sie ihn öffnen, bleibt {current} Ihre Kontakt-E-Mail.",
   "settings.contact_resend": "Link erneut senden",
