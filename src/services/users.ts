@@ -3,7 +3,7 @@ import type { Context } from './context.ts';
 import { ServiceError } from './context.ts';
 import type { ReadView, Tx } from '../db/store.ts';
 import {
-  type Invitation, type Preregistration, type Repo, type User, type UserPrefs,
+  type Invitation, type Preregistration, type User, type UserPrefs,
   contactEmailOf, readBranding, USER_THEMES, normalizePdfPrefs, pdfPrefsOf,
 } from '../db/models.ts';
 import { randomId, randomSecret, sha256hex } from '../util/crypto.ts';
@@ -434,5 +434,3 @@ export async function findUsableInvitation(view: ReadView, code: string): Promis
   if (inv.expiresAt && Date.parse(inv.expiresAt) < Date.now()) return null;
   return inv;
 }
-
-export type { Repo };
