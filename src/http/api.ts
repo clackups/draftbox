@@ -29,12 +29,14 @@
 //   to the configured default and null (or 0 for the quota) means
 //   unlimited. writableUntil is a date (writable through that day, UTC)
 //   or an ISO timestamp.
+//
+//   Errors are {"error": "<code>"} with a matching status; ServiceErrors
+//   thrown by the handlers are answered so by app.onError.
 
 import { isIPv4, isIPv6 } from 'node:net';
 import type { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { AppEnv, Ctx, Services } from './app.ts';
-import { ServiceError } from '../services/context.ts';
 import { safeEqual } from '../util/crypto.ts';
 import { tokenPermissions } from '../services/tokens.ts';
 import { parseLimitGrant, parseQuotaUpdate, parseUntilUpdate } from '../services/limits.ts';
@@ -185,15 +187,10 @@ export function registerApiRoutes(app: Hono<AppEnv>, svc: Services): void {
 
   app.post('/api/v1/admin/preregistrations', async (c) => {
     const body = await jsonBody(c);
-    try {
-      const limits = parseLimitGrant(body.storageQuotaMb, body.timeLimitDays);
-      const rec = await svc.prereg.add(String(body.email ?? ''), String(body.note ?? ''), limits);
-      const existing = await svc.users.getByEmail(rec.email);
-      return c.json({ preregistration: rec, registered: existing !== null }, 201);
-    } catch (err) {
-      if (err instanceof ServiceError) return c.json({ error: err.code }, 400);
-      throw err;
-    }
+    const limits = parseLimitGrant(body.storageQuotaMb, body.timeLimitDays);
+    const rec = await svc.prereg.add(String(body.email ?? ''), String(body.note ?? ''), limits);
+    const existing = await svc.users.getByEmail(rec.email);
+    return c.json({ preregistration: rec, registered: existing !== null }, 201);
   });
 
   app.get('/api/v1/admin/preregistrations/:email', async (c) => {
@@ -211,13 +208,7 @@ export function registerApiRoutes(app: Hono<AppEnv>, svc: Services): void {
   app.post('/api/v1/admin/invitations', async (c) => {
     const body = await jsonBody(c);
     const days = Number(body.expiresDays ?? 0);
-    let limits;
-    try {
-      limits = parseLimitGrant(body.storageQuotaMb, body.timeLimitDays);
-    } catch (err) {
-      if (err instanceof ServiceError) return c.json({ error: err.code }, 400);
-      throw err;
-    }
+    const limits = parseLimitGrant(body.storageQuotaMb, body.timeLimitDays);
     const { invitation, code } = await svc.invites.create('api', String(body.note ?? ''), days > 0 ? days : null, limits);
     return c.json({ id: invitation.id, link: svc.invites.link(code), expiresAt: invitation.expiresAt, limits: invitation.limits ?? {} }, 201);
   });
@@ -251,16 +242,11 @@ export function registerApiRoutes(app: Hono<AppEnv>, svc: Services): void {
     const user = await svc.users.getByEmail(c.req.param('email'));
     if (!user) return c.json({ error: 'not_found' }, 404);
     const body = await jsonBody(c);
-    try {
-      const updated = await svc.limits.update(user.id, {
-        storageQuotaMb: parseQuotaUpdate(body.storageQuotaMb),
-        writableUntil: parseUntilUpdate(body.writableUntil),
-      }, 'api');
-      return c.json(await userJson(updated));
-    } catch (err) {
-      if (err instanceof ServiceError && err.status === 400) return c.json({ error: err.code }, 400);
-      throw err;
-    }
+    const updated = await svc.limits.update(user.id, {
+      storageQuotaMb: parseQuotaUpdate(body.storageQuotaMb),
+      writableUntil: parseUntilUpdate(body.writableUntil),
+    }, 'api');
+    return c.json(await userJson(updated));
   });
 
   app.all('/api/*', (c) => c.json({ error: 'not_found' }, 404));

@@ -1090,3 +1090,17 @@ test('web uploads and edits stay within the storage quota, also when concurrent'
   assert.deepEqual(results.map((x) => x.res.status).sort(), [302, 413]);
   assert.ok((await env.svc.limits.usedBytes(user.id)) <= used + 1024 * 1024);
 });
+
+test('admin API errors are JSON with a matching status', async () => {
+  let r = await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'not-an-email' });
+  assert.equal(r.status, 400);
+  assert.deepEqual(await r.json(), { error: 'invalid_email' });
+  r = await adminApi(env, 'POST', '/api/v1/admin/invitations', { storageQuotaMb: -5 });
+  assert.equal(r.status, 400);
+  assert.deepEqual(await r.json(), { error: 'invalid_limit' });
+  await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'apierr@example.com' });
+  await new Browser(env).login('apierr@example.com');
+  r = await adminApi(env, 'PATCH', '/api/v1/admin/users/apierr@example.com/limits', { writableUntil: 'soon' });
+  assert.equal(r.status, 400);
+  assert.deepEqual(await r.json(), { error: 'invalid_limit' });
+});
