@@ -465,6 +465,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     const refs = await svc.repos.tags(rc.git);
     const rows = await Promise.all(refs.map(async (r) => ({
       name: r.name.slice('refs/tags/'.length),
+      oid: r.oid,
       commit: r.commitOid ? await rc.git.getCommit(r.commitOid) : null,
     })));
     rows.sort((a, b) => (b.commit?.committer.time ?? 0) - (a.commit?.committer.time ?? 0));
@@ -484,7 +485,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
   app.post('/:owner/:repo/tags/delete', async (c) => {
     const rc = await loadRepo(c, svc, { owner: true });
     const f = await formFields(c);
-    await svc.repos.deleteTag(rc.git, f.name ?? '');
+    await svc.repos.deleteTag(rc.git, f.name ?? '', f.oid ?? '');
     setFlash(c, 'ok', 'tag_deleted');
     return c.redirect(repoUrl(rc, 'tags'));
   });
@@ -494,6 +495,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     if (!rc.advanced) return c.redirect(repoUrl(rc));
     const rows = await Promise.all(rc.branches.map(async (b) => ({
       name: b.name.slice('refs/heads/'.length),
+      oid: b.oid,
       commit: b.commitOid ? await rc.git.getCommit(b.commitOid) : null,
     })));
     return c.html(branchesPage(rc, rows));
@@ -514,7 +516,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     const rc = await loadRepo(c, svc, { owner: true });
     if (!rc.advanced) throw new ServiceError('advanced_mode_required', 403);
     const f = await formFields(c);
-    await svc.repos.deleteBranch(rc.git, f.name ?? '');
+    await svc.repos.deleteBranch(rc.git, f.name ?? '', f.oid ?? '');
     setFlash(c, 'ok', 'branch_deleted');
     return c.redirect(repoUrl(rc, 'branches'));
   });

@@ -238,11 +238,22 @@ class NodegitRepo implements GitRepo {
 
   async deleteRef(name: string, expectedOld?: string): Promise<void> {
     const NG = ng();
-    if (expectedOld !== undefined) {
-      const current = await this.readRefTarget(name);
-      if (current !== expectedOld) throw new RefConflictError(name);
+    if (expectedOld === undefined) {
+      const rc = NG.Reference.remove(this.repo, name);
+      if (typeof rc === 'number' && rc < 0) throw new RefConflictError(name);
+      return;
     }
-    const rc = NG.Reference.remove(this.repo, name);
+    let ref;
+    try {
+      ref = await NG.Reference.lookup(this.repo, name);
+    } catch (err) {
+      if (isNotFound(err)) throw new RefConflictError(name);
+      throw err;
+    }
+    if (ref.target().tostrS() !== expectedOld) throw new RefConflictError(name);
+    // Deleting through the looked-up reference fails when it has been
+    // changed in the meantime (libgit2 compares the old value).
+    const rc = ref.delete();
     if (typeof rc === 'number' && rc < 0) throw new RefConflictError(name);
   }
 

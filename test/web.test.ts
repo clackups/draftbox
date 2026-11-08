@@ -1009,3 +1009,37 @@ test('the saved language changes only through a CSRF-checked POST', async () => 
   assert.equal(await lang(), 'de');
   await lena.post('/lang/en', { next: '/' });
 });
+
+test('a branch or tag changed since the page was opened is not deleted', async () => {
+  await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'bea@example.com' });
+  const bea = new Browser(env);
+  await bea.login('bea@example.com');
+  await bea.post('/settings', { name: 'Bea', handle: 'bea', language: 'en', theme: 'site', advancedMode: '1', contactEmail: 'bea@example.com' });
+  await bea.post('/new', { name: 'book', description: '', visibility: 'private' });
+  await bea.post('/bea/book/new', { ref: 'main', base: '', dir: '', name: 'a.md', content: 'a\n', message: '' });
+  await bea.post('/bea/book/branches', { name: 'draft', from: 'main' });
+  await bea.post('/bea/book/tags', { name: 'v1', target: 'main', message: 'First' });
+  const oidOf = (page: string, name: string) =>
+    new RegExp(`name="name" value="${name}"><input type="hidden" name="oid" value="([0-9a-f]{40})"`).exec(page)![1];
+
+  const branchesPage = (await bea.get('/bea/book/branches')).text;
+  const stale = oidOf(branchesPage, 'draft');
+  // A push moves the branch after the page was shown.
+  const user = (await env.svc.users.getByEmail('bea@example.com'))!;
+  const git = await env.svc.repos.open((await env.svc.repos.getByName(user, 'book'))!);
+  await env.svc.repos.commitFiles(git, 'draft', stale, new Map([['b.md', new TextEncoder().encode('b\n')]]), 'Pushed', { name: 'B', email: 'b@example.com' });
+  let r = await bea.post('/bea/book/branches/delete', { name: 'draft', oid: stale });
+  assert.equal(r.res.status, 409);
+  assert.match(r.text, /changed since you opened this page/);
+  assert.ok(await git.resolveRef('refs/heads/draft'));
+  r = await bea.post('/bea/book/branches/delete', { name: 'draft', oid: oidOf((await bea.get('/bea/book/branches')).text, 'draft') });
+  assert.equal(r.res.status, 302);
+  assert.equal(await git.resolveRef('refs/heads/draft'), null);
+
+  const tagOid = oidOf((await bea.get('/bea/book/tags')).text, 'v1');
+  r = await bea.post('/bea/book/tags/delete', { name: 'v1', oid: '0'.repeat(40) });
+  assert.equal(r.res.status, 409);
+  r = await bea.post('/bea/book/tags/delete', { name: 'v1', oid: tagOid });
+  assert.equal(r.res.status, 302);
+  assert.equal(await git.resolveRef('refs/tags/v1'), null);
+});

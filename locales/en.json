@@ -322,6 +322,7 @@
   "error.branch_exists": "A branch with this name already exists.",
   "error.cannot_delete_main": "The main branch cannot be deleted.",
   "error.edit_conflict": "The file was changed by someone else (or in another window) while you were editing. Your text is kept below; saving again will replace the latest version with it.",
+  "error.ref_changed": "It was changed since you opened this page, so it was not deleted. Reload the page and try again.",
   "error.file_exists": "A file with this name already exists.",
   "error.handle_taken": "This user name is already taken.",
   "error.invalid_branch": "Invalid branch name.",

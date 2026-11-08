@@ -330,8 +330,10 @@ ${changes.map((f) => html`<section class="card flush diff">
 </section>`)}`);
 }
 
+// `oid`: the value of the ref, sent back when deleting it.
 export interface TagRow {
   name: string;
+  oid: string;
   commit: CommitInfo | null;
 }
 
@@ -355,11 +357,11 @@ ${tags.map((tag) => html`<tr>
   <td><a href="${repoUrl(rc, 'tree') + '?ref=' + encodeURIComponent(tag.name)}"><strong class="mono">${tag.name}</strong></a></td>
   <td>${tag.commit ? html`<a href="${repoUrl(rc, 'commit', tag.commit.oid)}">${firstLine(tag.commit.message)}</a><br><span class="muted small">${localTime(rc.page, tag.commit.author.time, 'date')}</span>` : ''}</td>
   <td class="actions">${rc.isOwner ? html`<form method="post" action="${repoUrl(rc, 'tags', 'delete')}" class="inline" data-confirm="${t('repo.tag_delete_confirm', { name: tag.name })}">
-    ${csrfField(rc.page)}<input type="hidden" name="name" value="${tag.name}"><button class="btn btn-small btn-danger">${t('action.delete')}</button></form>` : ''}</td>
+    ${csrfField(rc.page)}<input type="hidden" name="name" value="${tag.name}"><input type="hidden" name="oid" value="${tag.oid}"><button class="btn btn-small btn-danger">${t('action.delete')}</button></form>` : ''}</td>
 </tr>`)}</table>`}</div>`);
 }
 
-export function branchesPage(rc: RepoCtx, rows: Array<{ name: string; commit: CommitInfo | null }>): string {
+export function branchesPage(rc: RepoCtx, rows: Array<{ name: string; oid: string; commit: CommitInfo | null }>): string {
   const { t } = rc.page;
   return repoLayout(rc, 'branches', `${t('repo.tab_branches')} - ${rc.repo.name}`, html`
 <p class="muted">${t('repo.branches_intro')}</p>
@@ -376,7 +378,7 @@ ${rows.map((r) => html`<tr>
     ${r.name === DEFAULT_BRANCH ? html` <span class="badge">${t('repo.default_branch')}</span>` : ''}</td>
   <td>${r.commit ? html`${firstLine(r.commit.message)}<br><span class="muted small">${localTime(rc.page, r.commit.author.time)}</span>` : ''}</td>
   <td class="actions">${rc.isOwner && r.name !== DEFAULT_BRANCH ? html`<form method="post" action="${repoUrl(rc, 'branches', 'delete')}" class="inline" data-confirm="${t('repo.branch_delete_confirm', { name: r.name })}">
-    ${csrfField(rc.page)}<input type="hidden" name="name" value="${r.name}"><button class="btn btn-small btn-danger">${t('action.delete')}</button></form>` : ''}</td>
+    ${csrfField(rc.page)}<input type="hidden" name="name" value="${r.name}"><input type="hidden" name="oid" value="${r.oid}"><button class="btn btn-small btn-danger">${t('action.delete')}</button></form>` : ''}</td>
 </tr>`)}
 </table></div>`);
 }

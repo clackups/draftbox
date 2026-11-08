@@ -264,10 +264,12 @@ export class RepoService {
     }
   }
 
-  async deleteBranch(git: GitRepo, name: string): Promise<void> {
+  // `expectedOid` is the value of the ref when the user chose to delete
+  // it; a ref changed since (e.g. by a push) is kept.
+  async deleteBranch(git: GitRepo, name: string, expectedOid: string): Promise<void> {
     if (name === DEFAULT_BRANCH) throw new ServiceError('cannot_delete_main');
     if (!validRefName(name) || !(await git.resolveRef(`refs/heads/${name}`))) throw new ServiceError('not_found', 404);
-    await git.deleteRef(`refs/heads/${name}`);
+    await deleteRefIfUnchanged(git, `refs/heads/${name}`, expectedOid);
   }
 
   async createTag(git: GitRepo, name: string, fromRev: string, message: string, tagger: Author): Promise<void> {
@@ -287,9 +289,9 @@ export class RepoService {
     }
   }
 
-  async deleteTag(git: GitRepo, name: string): Promise<void> {
+  async deleteTag(git: GitRepo, name: string, expectedOid: string): Promise<void> {
     if (!validRefName(name) || !(await git.resolveRef(`refs/tags/${name}`))) throw new ServiceError('not_found', 404);
-    await git.deleteRef(`refs/tags/${name}`);
+    await deleteRefIfUnchanged(git, `refs/tags/${name}`, expectedOid);
   }
 
   async log(git: GitRepo, commitOid: string, limit: number, skip: number): Promise<CommitInfo[]> {
@@ -329,6 +331,15 @@ export class RepoService {
     const out: Array<{ path: string; status: 'added' | 'modified' | 'deleted' }> = [];
     await diffTrees(git, parent ? parent.treeOid : null, commit.treeOid, '', out);
     return out;
+  }
+}
+
+async function deleteRefIfUnchanged(git: GitRepo, ref: string, expectedOid: string): Promise<void> {
+  try {
+    await git.deleteRef(ref, expectedOid);
+  } catch (err) {
+    if (err instanceof RefConflictError) throw new ServiceError('ref_changed', 409);
+    throw err;
   }
 }
 
