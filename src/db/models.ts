@@ -46,6 +46,63 @@ export interface UserPrefs {
   language: Language;
   advancedMode: boolean;
   theme: UserTheme;
+  // Defaults of the "Save as PDF" dialog. Absent in records created
+  // before it was introduced; see pdfPrefsOf().
+  pdf?: PdfPrefs;
+}
+
+export const PDF_PAPERS = ['A4', 'A3', 'A5', 'letter', 'legal'] as const;
+export type PdfPaper = (typeof PDF_PAPERS)[number];
+// iso: 2026-11-08, dmy: 08.11.2026, mdy: 11/08/2026, long: the date
+// written out in the UI language, iso_time: 2026-11-08 14:30.
+export const PDF_DATE_FORMATS = ['iso', 'dmy', 'mdy', 'long', 'iso_time'] as const;
+export type PdfDateFormat = (typeof PDF_DATE_FORMATS)[number];
+export const PDF_FONT_SIZES: readonly number[] = [8, 9, 10, 11, 12, 13, 14, 16, 18];
+
+// Page setup for documents printed to PDF in the browser.
+export interface PdfPrefs {
+  paper: PdfPaper;
+  landscape: boolean;
+  // Base font size in points.
+  fontSize: number;
+  // Page header with the document title (its title or first heading).
+  header: boolean;
+  footerFilename: boolean;
+  footerDate: boolean;
+  dateFormat: PdfDateFormat;
+  footerPageNumbers: boolean;
+}
+
+export const DEFAULT_PDF_PREFS: PdfPrefs = {
+  paper: 'A4',
+  landscape: false,
+  fontSize: 11,
+  header: true,
+  footerFilename: true,
+  footerDate: true,
+  dateFormat: 'iso',
+  footerPageNumbers: true,
+};
+
+// Validated PDF settings: unknown or missing values take the default.
+export function normalizePdfPrefs(input: unknown, base: PdfPrefs = DEFAULT_PDF_PREFS): PdfPrefs {
+  const p = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+  const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d);
+  const size = Number(p.fontSize);
+  return {
+    paper: (PDF_PAPERS as readonly unknown[]).includes(p.paper) ? (p.paper as PdfPaper) : base.paper,
+    landscape: bool(p.landscape, base.landscape),
+    fontSize: PDF_FONT_SIZES.includes(size) ? size : base.fontSize,
+    header: bool(p.header, base.header),
+    footerFilename: bool(p.footerFilename, base.footerFilename),
+    footerDate: bool(p.footerDate, base.footerDate),
+    dateFormat: (PDF_DATE_FORMATS as readonly unknown[]).includes(p.dateFormat) ? (p.dateFormat as PdfDateFormat) : base.dateFormat,
+    footerPageNumbers: bool(p.footerPageNumbers, base.footerPageNumbers),
+  };
+}
+
+export function pdfPrefsOf(user: User | null): PdfPrefs {
+  return normalizePdfPrefs(user?.prefs.pdf);
 }
 
 // A contact address change waiting for the user to open the

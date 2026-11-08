@@ -341,3 +341,13 @@ pre { background: var(--code-bg); padding: 0.7rem 0.9rem; border-radius: 6px; ov
   .container { padding: 0.6rem; }
   th, td { padding: 0.4rem; }
 }
+
+/* "Save as PDF" dialog */
+.pdf-dialog {
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 1rem 1.2rem; width: min(34rem, calc(100vw - 2rem));
+}
+.pdf-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+.pdf-dialog h2 { margin: 0; font-size: 1.1em; }
+.pdf-dialog .row > label { min-width: 120px; }

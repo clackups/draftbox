@@ -74,7 +74,7 @@ export class Browser {
     return { res, text };
   }
 
-  async post(path: string, fields: Record<string, string> | FormData, opts: { csrf?: boolean } = {}): Promise<{ res: Response; text: string }> {
+  async post(path: string, fields: Record<string, string> | FormData, opts: { csrf?: boolean; headers?: Record<string, string> } = {}): Promise<{ res: Response; text: string }> {
     if (!this.csrf) await this.get('/');
     let body: FormData | URLSearchParams;
     if (fields instanceof FormData) {
@@ -84,7 +84,7 @@ export class Browser {
       body = new URLSearchParams(fields);
       if (opts.csrf !== false) body.set('_csrf', this.csrf);
     }
-    const res = await this.env.app.request(path, { method: 'POST', body, headers: { Cookie: this.cookieHeader() } });
+    const res = await this.env.app.request(path, { method: 'POST', body, headers: { Cookie: this.cookieHeader(), ...opts.headers } });
     this.store(res);
     return { res, text: await res.text() };
   }

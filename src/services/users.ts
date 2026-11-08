@@ -4,7 +4,7 @@ import { ServiceError } from './context.ts';
 import type { ReadView, Tx } from '../db/store.ts';
 import {
   type Branding, type Invitation, type Preregistration, type Repo, type User, type UserPrefs,
-  contactEmailOf, DEFAULT_BRANDING, USER_THEMES,
+  contactEmailOf, DEFAULT_BRANDING, USER_THEMES, normalizePdfPrefs, pdfPrefsOf,
 } from '../db/models.ts';
 import { randomId, randomSecret, sha256hex } from '../util/crypto.ts';
 import { isSupportedLanguage, translator } from '../i18n/index.ts';
@@ -239,6 +239,7 @@ export class UserService {
         if (p.language !== undefined && isSupportedLanguage(p.language)) user.prefs.language = p.language;
         if (p.advancedMode !== undefined) user.prefs.advancedMode = p.advancedMode;
         if (p.theme !== undefined && USER_THEMES.includes(p.theme)) user.prefs.theme = p.theme;
+        if (p.pdf !== undefined) user.prefs.pdf = normalizePdfPrefs(p.pdf, pdfPrefsOf(user));
       }
       tx.put(`users/${user.id}.json`, user);
       return user;

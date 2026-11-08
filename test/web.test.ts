@@ -842,7 +842,8 @@ test('fountain screenplays are shown formatted', async () => {
   let r = await wes.post('/wes/film/new', { ref: 'main', base: '', dir: '', name: 'pilot.fountain', content: script, message: '' });
   assert.equal(r.res.status, 302);
   let page = await wes.get('/wes/film/blob/pilot.fountain');
-  assert.match(page.text, /<div class="fountain pad"><div class="screenplay">/);
+  assert.match(page.text, /<div class="fountain pad" data-pdf-content><div class="screenplay">/);
+  assert.match(page.text, /data-mode="fountain"/);
   assert.match(page.text, /<div class="fn-scene">INT. OFFICE - NIGHT<\/div>/);
   assert.match(page.text, /<div class="fn-character">WES<\/div>/);
   page = await wes.get('/wes/film/blob/pilot.fountain?source=1');
@@ -891,4 +892,70 @@ test('dangerous token permissions are offered in advanced mode only', async () =
   const list = await pia.get('/settings/tokens');
   assert.match(list.text, /badge-warn">Forced push</);
   assert.match(list.text, /badge-warn">Delete tags</);
+});
+
+test('save as PDF: dialog, last change and preferences', async () => {
+  await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'pam@example.com' });
+  const pam = new Browser(env);
+  await pam.login('pam@example.com', 'Pam');
+  await pam.post('/new', { name: 'book', description: '', visibility: 'public' });
+  let r = await pam.post('/pam/book/new', { ref: 'main', base: '', dir: '', name: 'ch1.md', content: 'Draft\n\n# Chapter *One*\n', message: 'Write chapter one' });
+  assert.equal(r.res.status, 302);
+  let page = await pam.get('/pam/book/new');
+  const base = /name="base" value="([0-9a-f]{40})"/.exec(page.text)![1];
+  r = await pam.post('/pam/book/new', { ref: 'main', base, dir: '', name: 'other.txt', content: 'x', message: 'Add other file' });
+  assert.equal(r.res.status, 302);
+
+  // The last change of the file, not the latest commit of the branch.
+  page = await pam.get('/pam/book/blob/ch1.md');
+  assert.match(page.text, /class="lastcommit"[\s\S]*Write chapter one/);
+  assert.doesNotMatch(page.text, /Add other file/);
+  assert.match(page.text, /<button type="button" class="btn btn-small btn-secondary" data-pdf hidden>PDF<\/button>/);
+  assert.match(page.text, /data-mode="markdown" data-raw="\/pam\/book\/raw\/ch1\.md"/);
+  assert.match(page.text, /<div class="markdown pad" data-pdf-content>/);
+  // Libraries and fonts load on demand, from this site.
+  const assets = JSON.parse(/data-pdf-assets="([^"]+)"/.exec(page.text)![1].replace(/&quot;/g, '"').replace(/&amp;/g, '&')) as
+    { scripts: string[]; fonts: Record<string, Record<string, string>> };
+  assert.equal(assets.scripts.length, 3);
+  for (const url of [...assets.scripts, assets.fonts.Roboto.normal, assets.fonts.Mono.bolditalics]) {
+    const res = await env.app.request(url);
+    assert.equal(res.status, 200, url);
+    assert.match(res.headers.get('Content-Type') ?? '', url.includes('.ttf') ? /^font\/ttf/ : /^text\/javascript/);
+  }
+  assert.equal((await env.app.request('/static/package.json')).status, 404);
+  assert.equal((await env.app.request('/static/__proto__')).status, 404);
+  // Other text files are taken from the raw file.
+  assert.match((await pam.get('/pam/book/blob/other.txt')).text, /data-mode="text" data-raw="\/pam\/book\/raw\/other\.txt"/);
+  assert.match((await pam.get('/pam/book/blob/ch1.md?source=1')).text, /data-mode="text"/);
+  assert.match(page.text, /<dialog class="pdf-dialog"[^>]*data-filename="ch1\.md" data-date="\d{4}-\d\d-\d\dT[^"]+" data-page-of="Page \{page\} of \{pages\}"/);
+  assert.match(page.text, /name="headerText" value="Chapter One"/);
+  assert.match(page.text, /<option value="A4" selected>/);
+  assert.match(page.text, /name="remember" value="1" checked/);
+
+  // Saved from the dialog (JSON request): no redirect.
+  r = await pam.post('/settings/pdf', { paper: 'letter', orientation: 'landscape', fontSize: '13', dateFormat: 'dmy', footerFilename: '1' });
+  assert.equal(r.res.status, 302);
+  r = await pam.post('/settings/pdf', { paper: 'A5', orientation: 'landscape', fontSize: '13', dateFormat: 'dmy', footerPageNumbers: '1' },
+    { headers: { Accept: 'application/json' } });
+  assert.equal(r.res.status, 204);
+  const user = (await env.svc.users.getByEmail('pam@example.com'))!;
+  assert.deepEqual(user.prefs.pdf, {
+    paper: 'A5', landscape: true, fontSize: 13, header: false, footerFilename: false, footerDate: false, dateFormat: 'dmy', footerPageNumbers: true,
+  });
+  page = await pam.get('/pam/book/blob/ch1.md');
+  assert.match(page.text, /<option value="A5" selected>/);
+  assert.match(page.text, /<option value="landscape" selected>/);
+  assert.match(page.text, /<option value="13" selected>/);
+  assert.match(page.text, /name="header" value="1" >/);
+  page = await pam.get('/settings');
+  assert.match(page.text, /id="pdf"/);
+  assert.match(page.text, /<option value="A5" selected>/);
+
+  // Visitors of a public repository get the defaults and nothing to save.
+  const guest = new Browser(env);
+  page = await guest.get('/pam/book/blob/ch1.md');
+  assert.match(page.text, /<option value="A4" selected>/);
+  assert.doesNotMatch(page.text, /name="remember"/);
+  assert.notEqual((await guest.post('/settings/pdf', { paper: 'A3' })).res.status, 204);
+  assert.equal((await env.svc.users.getByEmail('pam@example.com'))!.prefs.pdf?.paper, 'A5');
 });

@@ -295,6 +295,33 @@ export class RepoService {
     return git.log(commitOid, limit, skip);
   }
 
+  // The most recent commit, reachable from `commitOid`, that changed the
+  // file at `path` relative to its first parent. Gives up (null) after
+  // `maxCommits` commits so that long histories stay cheap.
+  async lastChange(git: GitRepo, commitOid: string, path: string, maxCommits = 1000): Promise<CommitInfo | null> {
+    // A commit's parent is usually the next commit of the log: cache by tree.
+    const seen = new Map<string, string | null>();
+    const blobAt = async (treeOid: string | undefined) => {
+      if (!treeOid) return null;
+      let oid = seen.get(treeOid);
+      if (oid === undefined) {
+        oid = (await git.lookupPath(treeOid, path))?.oid ?? null;
+        seen.set(treeOid, oid);
+      }
+      return oid;
+    };
+    const batch = 100;
+    for (let skip = 0; skip < maxCommits; skip += batch) {
+      const commits = await git.log(commitOid, batch, skip);
+      for (const c of commits) {
+        const parent = c.parents[0] ? await git.getCommit(c.parents[0]) : null;
+        if ((await blobAt(c.treeOid)) !== (await blobAt(parent?.treeOid))) return c;
+      }
+      if (commits.length < batch) break;
+    }
+    return null;
+  }
+
   // Lists paths changed by a commit relative to its first parent.
   async changedPaths(git: GitRepo, commit: CommitInfo): Promise<Array<{ path: string; status: 'added' | 'modified' | 'deleted' }>> {
     const parent = commit.parents[0] ? await git.getCommit(commit.parents[0]) : null;

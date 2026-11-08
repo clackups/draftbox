@@ -4,7 +4,8 @@ import { type AppEnv, type Page, type Services, formFields, isSecure, requireUse
 import { LANG_COOKIE } from '../auth/session.ts';
 import { LANGUAGES, languageName } from '../i18n/index.ts';
 import { VALIDITY_MONTHS, OTP_LIFETIME_DAYS, type IssuedToken } from '../services/tokens.ts';
-import { type AccessToken, type Repo, type TokenPermission, type User, type UserTheme, contactEmailOf, TOKEN_PERMISSIONS, USER_THEMES } from '../db/models.ts';
+import { type AccessToken, type Repo, type TokenPermission, type User, type UserTheme, contactEmailOf, pdfPrefsOf, TOKEN_PERMISSIONS, USER_THEMES } from '../db/models.ts';
+import { pdfFields, pdfPrefsFromForm } from '../views/pdf.ts';
 import { MAX_DESCRIPTION, isValidEmail } from '../services/users.ts';
 import { html, urlPath, type Html } from '../views/html.ts';
 import { csrfField, layout, localTime, storageUsage, tHtml } from '../views/layout.ts';
@@ -61,6 +62,13 @@ ${pending ? html`<div class="warning stack">
   </select></label>
   <label class="check"><input type="checkbox" name="advancedMode" value="1" ${advanced ? 'checked' : ''}>
     <span><strong>${t('settings.advanced_mode')}</strong><br><small class="muted">${t('settings.advanced_mode_help')}</small></span></label>
+  <div><button class="btn">${t('action.save')}</button></div>
+</form>
+<form method="post" action="/settings/pdf" class="card stack" id="pdf">
+  ${csrfField(page)}
+  <h2>${t('settings.pdf')}</h2>
+  <p class="muted">${t('settings.pdf_help')}</p>
+  ${pdfFields(page, pdfPrefsOf(user))}
   <div><button class="btn">${t('action.save')}</button></div>
 </form>
 <section class="card stack"><h2>${t('settings.limits')}</h2>
@@ -191,6 +199,17 @@ export function registerSettingsRoutes(app: Hono<AppEnv>, svc: Services): void {
     }
     setFlash(c, 'ok', contact === 'verification_sent' ? 'verification_sent' : 'settings_saved');
     return c.redirect('/settings');
+  });
+
+  // PDF page setup: from the settings page, or from the "Save as PDF"
+  // dialog in app.js (which asks for JSON and gets no redirect).
+  app.post('/settings/pdf', async (c) => {
+    const user = requireUser(c);
+    const f = await formFields(c);
+    await svc.users.updateProfile(user.id, { prefs: { pdf: pdfPrefsFromForm(f) } });
+    if ((c.req.header('Accept') ?? '').includes('application/json')) return c.body(null, 204);
+    setFlash(c, 'ok', 'settings_saved');
+    return c.redirect('/settings#pdf');
   });
 
   app.post('/settings/contact-email/resend', async (c) => {

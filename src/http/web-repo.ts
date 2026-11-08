@@ -3,7 +3,8 @@ import { type AppEnv, type Ctx, type Services, formFields, requireUser, setFlash
 import { ServiceError } from '../services/context.ts';
 import { DEFAULT_BRANCH, validFilePath } from '../services/repos.ts';
 import { isExpired } from '../services/tokens.ts';
-import { contactEmailOf, type Visibility } from '../db/models.ts';
+import { contactEmailOf, pdfPrefsOf, type Visibility } from '../db/models.ts';
+import { documentTitle } from '../util/doctitle.ts';
 import { isMarkdownPath, renderMarkdown, type LinkResolver } from '../util/markdown.ts';
 import { isFountainPath, renderFountain } from '../util/fountain.ts';
 import { diffLines, hunks } from '../util/diff.ts';
@@ -218,7 +219,11 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     const text = asText(data);
     const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
     const rendered = text !== null ? renderDocument(path, text, resolver(rc, dir)) : null;
-    return c.html(blobPage(rc, { path, size: data.length, text, rendered, showSource: c.req.query('source') === '1' }));
+    const lastChange = await svc.repos.lastChange(rc.git, rc.commitOid, path);
+    return c.html(blobPage(rc, {
+      path, size: data.length, text, rendered, showSource: c.req.query('source') === '1',
+      lastChange, title: text !== null ? documentTitle(path, text) : null, pdf: pdfPrefsOf(rc.page.user),
+    }));
   });
 
   app.get('/:owner/:repo/raw/*', async (c) => {

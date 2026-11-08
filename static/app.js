@@ -126,6 +126,121 @@
     });
   }
 
+  // PDF in the file view: the dialog chooses the page setup, then the
+  // PDF is built in the browser (pdfmake, loaded on first use, see
+  // static/pdf.js) and downloaded.
+  var pdfDialog = document.querySelector('dialog.pdf-dialog');
+  var pdfButton = document.querySelector('[data-pdf]');
+  if (pdfDialog && pdfDialog.showModal && pdfButton && window.fetch && window.Promise) {
+    var pdfForm = pdfDialog.querySelector('form');
+    var field = function (name) { return pdfForm.elements[name]; };
+    var createBtn = pdfForm.querySelector('button[value=ok]');
+    var statusEl = pdfDialog.querySelector('[data-pdf-status]');
+    var assets = JSON.parse(pdfDialog.getAttribute('data-pdf-assets'));
+    var libs = null;
+
+    var loadScript = function (src) {
+      return new Promise(function (resolve, reject) {
+        var el = document.createElement('script');
+        el.src = src;
+        el.onload = resolve;
+        el.onerror = function () { reject(new Error('cannot load ' + src)); };
+        document.head.appendChild(el);
+      });
+    };
+    // The libraries load one after another (pdf.js expects the others).
+    var loadLibs = function () {
+      if (!libs) {
+        libs = assets.scripts.reduce(function (p, src) {
+          return p.then(function () { return loadScript(src); });
+        }, Promise.resolve()).then(function () {
+          var abs = function (u) { return location.origin + u; };
+          var fonts = {};
+          Object.keys(assets.fonts).forEach(function (family) {
+            fonts[family] = {};
+            Object.keys(assets.fonts[family]).forEach(function (style) { fonts[family][style] = abs(assets.fonts[family][style]); });
+          });
+          window.pdfMake.setFonts(fonts);
+          // Fonts come from this site only.
+          window.pdfMake.setUrlAccessPolicy(function (url) { return url.indexOf(location.origin + '/') === 0; });
+        });
+        libs.catch(function () { libs = null; });
+      }
+      return libs;
+    };
+    var source = function () {
+      var mode = pdfDialog.getAttribute('data-mode');
+      if (mode !== 'text') return Promise.resolve({ mode: mode, element: document.querySelector('[data-pdf-content]') });
+      return fetch(pdfDialog.getAttribute('data-raw'), { credentials: 'same-origin' }).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.text();
+      }).then(function (text) { return { mode: 'text', text: text }; });
+    };
+    var savePrefs = function () {
+      var remember = field('remember');
+      if (!remember || !remember.checked || !field('_csrf')) return;
+      var body = new URLSearchParams();
+      ['_csrf', 'paper', 'orientation', 'fontSize', 'dateFormat'].forEach(function (n) { body.set(n, field(n).value); });
+      ['header', 'footerFilename', 'footerDate', 'footerPageNumbers'].forEach(function (n) {
+        if (field(n).checked) body.set(n, '1');
+      });
+      fetch('/settings/pdf', { method: 'POST', body: body, credentials: 'same-origin', headers: { Accept: 'application/json' } })
+        .catch(function () {});
+    };
+    var setBusy = function (busy, message) {
+      createBtn.disabled = busy;
+      statusEl.textContent = message || '';
+      statusEl.hidden = !message;
+    };
+    var syncDate = function () { field('dateFormat').disabled = !field('footerDate').checked; };
+    field('footerDate').addEventListener('change', syncDate);
+    syncDate();
+
+    pdfButton.hidden = false;
+    pdfButton.addEventListener('click', function () {
+      setBusy(false);
+      pdfDialog.returnValue = '';
+      pdfDialog.showModal();
+    });
+    pdfForm.addEventListener('submit', function (ev) {
+      if (!ev.submitter || ev.submitter.value !== 'ok') return;
+      ev.preventDefault();
+      setBusy(true, pdfDialog.getAttribute('data-creating'));
+      var filename = pdfDialog.getAttribute('data-filename');
+      var date = new Date(pdfDialog.getAttribute('data-date') || '');
+      Promise.all([loadLibs(), source()]).then(function (res) {
+        var src = res[1];
+        var doc = window.DraftboxPdf.build({
+          mode: src.mode,
+          element: src.element,
+          text: src.text,
+          paper: field('paper').value,
+          landscape: field('orientation').value === 'landscape',
+          fontSize: parseInt(field('fontSize').value, 10),
+          header: field('header').checked,
+          headerText: field('headerText').value,
+          filename: filename,
+          footerFilename: field('footerFilename').checked,
+          date: isNaN(date.getTime()) ? null : date,
+          footerDate: field('footerDate').checked,
+          dateFormat: field('dateFormat').value,
+          footerPageNumbers: field('footerPageNumbers').checked,
+          pageOf: pdfDialog.getAttribute('data-page-of'),
+          locale: locale,
+        });
+        return window.pdfMake.createPdf(doc).download((filename.replace(/\.[^.]*$/, '') || filename) + '.pdf');
+      }).then(function () {
+        savePrefs();
+        setBusy(false);
+        pdfDialog.close('ok');
+      }, function (err) {
+        if (window.console) console.error(err);
+        setBusy(false, pdfDialog.getAttribute('data-failed'));
+      });
+    });
+    pdfDialog.addEventListener('close', function () { pdfButton.focus(); });
+  }
+
   // Text editor: write/preview tabs (Markdown, Fountain) and
   // unsaved-changes warning.
   var editor = document.querySelector('form[data-editor]');

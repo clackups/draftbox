@@ -109,5 +109,8 @@ Implementation map
   `git receive-pack`, which libgit2 does not implement).
 * `src/views/` - HTML templates (escaping tagged templates in
   `html.ts`).
+* `static/` - browser scripts and styles. `pdf.js` builds PDFs in the
+  browser with pdfmake and html-to-pdfmake; those libraries and the
+  PDF fonts are served from `node_modules` (see `src/http/static.ts`).
 * `locales/` - UI translations (en, uk, de); every locale must have the
   same keys as `en.json`.

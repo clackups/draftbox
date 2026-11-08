@@ -1,5 +1,5 @@
 import type { Page } from '../http/app.ts';
-import { type AccessToken, type Repo, type User, contactEmailOf } from '../db/models.ts';
+import { type AccessToken, type PdfPrefs, type Repo, type User, contactEmailOf } from '../db/models.ts';
 import type { CommitInfo, GitRepo, RefInfo, TreeEntry } from '../git/types.ts';
 import type { Hunk } from '../util/diff.ts';
 import { html, raw, urlPath, type Html } from './html.ts';
@@ -8,6 +8,8 @@ import { DEFAULT_BRANCH } from '../services/repos.ts';
 import { landingText } from '../services/admin.ts';
 import { renderMarkdown } from '../util/markdown.ts';
 import { tokenTable } from './tokens.ts';
+import { pdfFields } from './pdf.ts';
+import { pdfAssets } from '../http/static.ts';
 
 export interface RepoCtx {
   page: Page;
@@ -152,6 +154,34 @@ export interface BlobView {
   text: string | null;
   rendered: { format: DocFormat; html: string } | null;
   showSource: boolean;
+  // Last commit that changed the file (null if not found cheaply).
+  lastChange: CommitInfo | null;
+  // Document title for the PDF page header, or null to use the file name.
+  title: string | null;
+  pdf: PdfPrefs;
+}
+
+// PDF dialog. app.js builds the PDF in the browser from the rendered
+// document (data-pdf-content) or, for other text, from the raw file.
+function pdfDialog(rc: RepoCtx, b: BlobView, name: string): Html {
+  const { page } = rc;
+  const { t } = page;
+  const date = b.lastChange ? new Date(b.lastChange.committer.time * 1000).toISOString() : '';
+  const mode = b.rendered !== null && !b.showSource ? b.rendered.format : 'text';
+  return html`<dialog class="pdf-dialog" aria-labelledby="pdf-dialog-title"
+    data-filename="${name}" data-date="${date}" data-page-of="${t('pdf.page_of')}"
+    data-mode="${mode}" data-raw="${withRef(rc, repoUrl(rc, 'raw', b.path))}"
+    data-creating="${t('pdf.creating')}" data-failed="${t('pdf.failed')}"
+    data-pdf-assets="${JSON.stringify(pdfAssets())}">
+  <form method="dialog" class="stack">
+    <h2 id="pdf-dialog-title">${t('pdf.title')}</h2>
+    ${pdfFields(page, b.pdf, b.title ?? name)}
+    ${page.user ? html`${csrfField(page)}<label class="check"><input type="checkbox" name="remember" value="1" checked> ${t('pdf.remember')}</label>` : ''}
+    <p class="muted small" data-pdf-status role="status" hidden></p>
+    <div class="row"><button class="btn" value="ok">${t('pdf.create')}</button>
+      <button class="btn btn-secondary" value="cancel" formnovalidate>${t('action.cancel')}</button></div>
+  </form>
+</dialog>`;
 }
 
 export function blobPage(rc: RepoCtx, b: BlobView): string {
@@ -161,7 +191,7 @@ export function blobPage(rc: RepoCtx, b: BlobView): string {
   if (b.text === null) {
     content = html`<p class="muted pad">${t('repo.binary_file', { size: b.size })}</p>`;
   } else if (b.rendered !== null && !b.showSource) {
-    content = html`<div class="${b.rendered.format} pad">${raw(b.rendered.html)}</div>`;
+    content = html`<div class="${b.rendered.format} pad" data-pdf-content>${raw(b.rendered.html)}</div>`;
   } else {
     const lines = b.text.split('\n');
     if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
@@ -170,6 +200,8 @@ export function blobPage(rc: RepoCtx, b: BlobView): string {
   const blobUrl = withRef(rc, repoUrl(rc, 'blob', b.path));
   return repoLayout(rc, 'files', `${name} - ${rc.repo.name}`, html`
 <div class="toolbar">${refSelector(rc, repoUrl(rc, 'blob', b.path))}${breadcrumbs(rc, b.path)}</div>
+${b.lastChange ? html`<div class="lastcommit"><a href="${repoUrl(rc, 'commit', b.lastChange.oid)}" class="mono">${b.lastChange.oid.slice(0, 8)}</a>
+  ${firstLine(b.lastChange.message)} <span class="muted">&middot; ${b.lastChange.author.name} &middot; ${localTime(rc.page, b.lastChange.committer.time)}</span></div>` : ''}
 <div class="card flush">
   <div class="filehead">
     <span>${t('repo.size_bytes', { size: b.size })}</span>
@@ -178,13 +210,15 @@ export function blobPage(rc: RepoCtx, b: BlobView): string {
       ? html`<a class="btn btn-small btn-secondary" href="${blobUrl}">${t('repo.view_rendered')}</a>`
       : html`<a class="btn btn-small btn-secondary" href="${blobUrl + (blobUrl.includes('?') ? '&' : '?')}source=1">${t('repo.view_source')}</a>`) : ''}
     <a class="btn btn-small btn-secondary" href="${withRef(rc, repoUrl(rc, 'raw', b.path))}">${t('repo.raw')}</a>
+    ${b.text !== null ? html`<button type="button" class="btn btn-small btn-secondary" data-pdf hidden>${t('pdf.save')}</button>` : ''}
     ${canEdit(rc) && b.text !== null ? html`<a class="btn btn-small" href="${withRef(rc, repoUrl(rc, 'edit', b.path))}">${t('action.edit')}</a>` : ''}
     ${canEdit(rc) ? html`<form method="post" action="${repoUrl(rc, 'delete', b.path)}" class="inline" data-confirm="${t('repo.delete_file_confirm', { name })}">
       ${csrfField(rc.page)}<input type="hidden" name="ref" value="${rc.ref}"><input type="hidden" name="base" value="${rc.commitOid ?? ''}">
       <button class="btn btn-small btn-danger">${t('action.delete')}</button></form>` : ''}
   </div>
   ${content}
-</div>`);
+</div>
+${b.text !== null ? pdfDialog(rc, b, name) : ''}`);
 }
 
 export interface EditView {

@@ -12,7 +12,9 @@ import { isValidEmail, normalizeDescription, normalizeHomepage } from '../src/se
 import { idTokenClaims } from '../src/auth/oauth.ts';
 import { sanitizeHtml } from '../src/util/sanitize.ts';
 import { safeNext } from '../src/http/app.ts';
-import { isFountainPath, renderFountain } from '../src/util/fountain.ts';
+import { fountainTitle, isFountainPath, renderFountain } from '../src/util/fountain.ts';
+import { documentTitle, markdownTitle } from '../src/util/doctitle.ts';
+import { DEFAULT_PDF_PREFS, normalizePdfPrefs } from '../src/db/models.ts';
 
 test('diffLines finds insertions and deletions', () => {
   const ops = diffLines('a\nb\nc\n', 'a\nB\nc\nd\n')!;
@@ -246,4 +248,29 @@ test('fountain output escapes HTML', () => {
   assert.ok(out.includes('*not italic*'));
   // Character cues in other scripts.
   assert.ok(renderFountain('\u0406\u0412\u0410\u041d\n\u041f\u0440\u0438\u0432\u0456\u0442.').includes('<div class="fn-character">\u0406\u0412\u0410\u041d</div>'));
+});
+
+test('document titles for the PDF page header', () => {
+  assert.equal(markdownTitle('Intro text\n\n## The *Big* [Plan](plan.md) ##\n\n# Later\n'), 'The Big Plan');
+  assert.equal(markdownTitle('```\n# not a heading\n```\nMy Title\n========\n'), 'My Title');
+  assert.equal(markdownTitle('#hashtag only\n\nplain text\n'), null);
+  assert.equal(fountainTitle('Title: **BRICK** & _Steel_\nAuthor: Stu\n\nINT. ROOM - DAY\n'), 'BRICK & Steel');
+  assert.equal(fountainTitle('Title:\n    Two\n    Lines\nAuthor: X\n'), 'Two Lines');
+  assert.equal(fountainTitle('INT. ROOM - DAY\n'), null);
+  assert.equal(documentTitle('notes.txt', '# Not markdown'), null);
+  assert.equal(documentTitle('README.md', '# Readme'), 'Readme');
+});
+
+test('PDF preferences are validated', () => {
+  assert.deepEqual(normalizePdfPrefs(undefined), DEFAULT_PDF_PREFS);
+  const p = normalizePdfPrefs({ paper: 'letter', landscape: true, fontSize: 14, header: false, dateFormat: 'long', footerPageNumbers: false });
+  assert.equal(p.paper, 'letter');
+  assert.equal(p.landscape, true);
+  assert.equal(p.fontSize, 14);
+  assert.equal(p.header, false);
+  assert.equal(p.dateFormat, 'long');
+  assert.equal(p.footerFilename, true);
+  // Invalid values keep the base value.
+  const q = normalizePdfPrefs({ paper: 'B5; color: red', fontSize: 99, dateFormat: 'x', header: 'yes' }, p);
+  assert.deepEqual(q, p);
 });

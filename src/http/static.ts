@@ -4,18 +4,53 @@ import type { Hono } from 'hono';
 import type { AppEnv, Services } from './app.ts';
 import type { Branding } from '../db/models.ts';
 
-const STATIC_FILES: Record<string, string> = {
-  'app.css': 'text/css; charset=utf-8',
-  'app.js': 'text/javascript; charset=utf-8',
-  'favicon.svg': 'image/svg+xml',
+const JS = 'text/javascript; charset=utf-8';
+const TTF = 'font/ttf';
+const PDFMAKE = 'node_modules/pdfmake/build/';
+const DEJAVU = 'node_modules/dejavu-fonts-ttf/ttf/';
+
+// Files served under /static/, relative to the project root. The PDF
+// libraries and fonts come straight from their npm packages.
+const STATIC_FILES: Record<string, { type: string; file: string }> = {
+  'app.css': { type: 'text/css; charset=utf-8', file: 'static/app.css' },
+  'app.js': { type: JS, file: 'static/app.js' },
+  'pdf.js': { type: JS, file: 'static/pdf.js' },
+  'favicon.svg': { type: 'image/svg+xml', file: 'static/favicon.svg' },
+  'pdfmake.min.js': { type: JS, file: PDFMAKE + 'pdfmake.min.js' },
+  'html-to-pdfmake.js': { type: JS, file: 'node_modules/html-to-pdfmake/browser.js' },
+  'Roboto-Regular.ttf': { type: TTF, file: PDFMAKE + 'fonts/Roboto/Roboto-Regular.ttf' },
+  'Roboto-Medium.ttf': { type: TTF, file: PDFMAKE + 'fonts/Roboto/Roboto-Medium.ttf' },
+  'Roboto-Italic.ttf': { type: TTF, file: PDFMAKE + 'fonts/Roboto/Roboto-Italic.ttf' },
+  'Roboto-MediumItalic.ttf': { type: TTF, file: PDFMAKE + 'fonts/Roboto/Roboto-MediumItalic.ttf' },
+  'DejaVuSansMono.ttf': { type: TTF, file: DEJAVU + 'DejaVuSansMono.ttf' },
+  'DejaVuSansMono-Bold.ttf': { type: TTF, file: DEJAVU + 'DejaVuSansMono-Bold.ttf' },
+  'DejaVuSansMono-Oblique.ttf': { type: TTF, file: DEJAVU + 'DejaVuSansMono-Oblique.ttf' },
+  'DejaVuSansMono-BoldOblique.ttf': { type: TTF, file: DEJAVU + 'DejaVuSansMono-BoldOblique.ttf' },
 };
+
+// Scripts and fonts that app.js loads when the user creates a PDF.
+export function pdfAssets(): { scripts: string[]; fonts: Record<string, Record<string, string>> } {
+  return {
+    scripts: ['pdfmake.min.js', 'html-to-pdfmake.js', 'pdf.js'].map(staticUrl),
+    fonts: {
+      Roboto: {
+        normal: staticUrl('Roboto-Regular.ttf'), bold: staticUrl('Roboto-Medium.ttf'),
+        italics: staticUrl('Roboto-Italic.ttf'), bolditalics: staticUrl('Roboto-MediumItalic.ttf'),
+      },
+      Mono: {
+        normal: staticUrl('DejaVuSansMono.ttf'), bold: staticUrl('DejaVuSansMono-Bold.ttf'),
+        italics: staticUrl('DejaVuSansMono-Oblique.ttf'), bolditalics: staticUrl('DejaVuSansMono-BoldOblique.ttf'),
+      },
+    },
+  };
+}
 
 const cache = new Map<string, Uint8Array>();
 
 function staticFile(name: string): Uint8Array {
   let data = cache.get(name);
   if (!data) {
-    data = readFileSync(new URL(`../../static/${name}`, import.meta.url));
+    data = readFileSync(new URL(`../../${STATIC_FILES[name].file}`, import.meta.url));
     cache.set(name, data);
   }
   return data;
@@ -48,10 +83,10 @@ export function themeCss(b: Branding): string {
 export function registerStaticRoutes(app: Hono<AppEnv>, svc: Services): void {
   app.get('/static/:name', (c) => {
     const name = c.req.param('name');
-    const type = STATIC_FILES[name];
-    if (!type) return c.notFound();
+    const entry = Object.hasOwn(STATIC_FILES, name) ? STATIC_FILES[name] : undefined;
+    if (!entry) return c.notFound();
     const maxAge = svc.ctx.config.staticCacheSeconds;
-    return c.body(staticFile(name) as Uint8Array<ArrayBuffer>, 200, { 'Content-Type': type, 'Cache-Control': `public, max-age=${maxAge}` });
+    return c.body(staticFile(name) as Uint8Array<ArrayBuffer>, 200, { 'Content-Type': entry.type, 'Cache-Control': `public, max-age=${maxAge}` });
   });
 
   app.get('/branding/theme.css', async (c) => {

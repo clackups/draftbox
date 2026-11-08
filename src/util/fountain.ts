@@ -163,3 +163,12 @@ export function renderFountain(source: string): string {
   }
   return `<div class="screenplay">${renderTitlePage(entries)}${out.join('')}</div>`;
 }
+
+// Plain-text title from the title page ("Title:" key), or null.
+export function fountainTitle(source: string): string | null {
+  const text = source.replace(/\r\n?/g, '\n').replace(/\/\*[\s\S]*?\*\//g, '');
+  const title = parseTitlePage(text.split('\n')).entries.find((e) => e.key === 'title');
+  if (!title) return null;
+  const plain = title.value.replace(/\\(.)/g, '$1').replace(/[*_]+/g, '').replace(/\s+/g, ' ').trim();
+  return plain || null;
+}
