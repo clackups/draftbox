@@ -273,10 +273,19 @@
           body.set('name', editor.querySelector('input[name=name]').value);
           preview.innerHTML = '';
           fetch('/preview', { method: 'POST', body: body, credentials: 'same-origin' })
-            .then(function (r) { return r.json(); })
+            .then(function (r) {
+              if (!r.ok) throw new Error('HTTP ' + r.status);
+              return r.json();
+            })
             .then(function (j) {
               preview.className = 'preview ' + (j.format === 'fountain' ? 'fountain' : 'markdown');
               preview.innerHTML = j.html;
+            }, function () {
+              preview.className = 'preview';
+              var msg = document.createElement('p');
+              msg.className = 'flash flash-error';
+              msg.textContent = preview.getAttribute('data-failed');
+              preview.appendChild(msg);
             });
           textarea.hidden = true;
           preview.hidden = false;

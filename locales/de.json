@@ -172,6 +172,7 @@
   "repo.rename_help": "Ändern Sie den Namen, um die Datei umzubenennen oder zu verschieben. Mit / legen Sie sie in einen Ordner.",
   "repo.write": "Schreiben",
   "repo.preview": "Vorschau",
+  "repo.preview_failed": "Die Vorschau konnte nicht geladen werden. Ihr Text ist davon nicht betroffen; laden Sie die Seite neu, um es erneut zu versuchen.",
   "repo.commit_message": "Beschreiben Sie Ihre Änderung (optional)",
   "repo.commit_message_placeholder": "Was haben Sie geändert?",
   "repo.upload_dir": "Ordner",

@@ -172,6 +172,7 @@
   "repo.rename_help": "Change the name to rename or move the file. Use / to put it into a folder.",
   "repo.write": "Write",
   "repo.preview": "Preview",
+  "repo.preview_failed": "The preview could not be loaded. Your text is not affected; reload the page to try again.",
   "repo.commit_message": "Describe your change (optional)",
   "repo.commit_message_placeholder": "What did you change?",
   "repo.upload_dir": "Folder",

@@ -868,6 +868,7 @@ test('fountain screenplays are shown formatted', async () => {
   // The editor offers a preview, rendered as Fountain.
   page = await wes.get('/wes/film/edit/pilot.fountain');
   assert.match(page.text, /<div class="edittabs" >/);
+  assert.match(page.text, /<div class="preview" hidden data-failed="The preview could not be loaded/);
   r = await wes.post('/preview', { name: 'pilot.fountain', content: script });
   const body = JSON.parse(r.text) as { format: string; html: string };
   assert.equal(body.format, 'fountain');

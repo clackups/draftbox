@@ -251,7 +251,7 @@ ${v.error ? html`<p class="flash flash-error">${t('error.' + v.error)}</p>` : ''
     <button type="button" class="tab" data-tab="preview">${t('repo.preview')}</button>
   </div>
   <textarea name="content" rows="24" class="mono" spellcheck="true">${v.content}</textarea>
-  <div class="preview" hidden></div>
+  <div class="preview" hidden data-failed="${t('repo.preview_failed')}"></div>
   <label>${t('repo.commit_message')}<input type="text" name="message" value="${v.message}" placeholder="${t('repo.commit_message_placeholder')}"></label>
   <div><button class="btn">${t('action.save')}</button>
     <a class="btn btn-secondary" href="${v.isNew ? withRef(rc, v.dir ? repoUrl(rc, 'tree', v.dir) : repoUrl(rc)) : withRef(rc, repoUrl(rc, 'blob', v.path))}">${t('action.cancel')}</a></div>
