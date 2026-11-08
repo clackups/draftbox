@@ -84,7 +84,8 @@ export class RepoService {
     return out.sort((a, b) => b.repo.createdAt.localeCompare(a.repo.createdAt));
   }
 
-  async create(owner: User, opts: { name: string; description: string; visibility: Visibility; initReadme: boolean }): Promise<Repo> {
+  // Creates an empty repository.
+  async create(owner: User, opts: { name: string; description: string; visibility: Visibility }): Promise<Repo> {
     const name = opts.name.trim();
     if (!validRepoName(name)) throw new ServiceError('invalid_repo_name');
     const id = randomId();
@@ -103,12 +104,7 @@ export class RepoService {
       tx.putText(`index/repo/${owner.id}/${name}`, id);
     });
     try {
-      const git = await this.ctx.git.openOrInit(this.ctx.repoPath(id));
-      if (opts.initReadme) {
-        const text = `# ${name}\n\n${repo.description}\n`;
-        await this.commitFiles(git, DEFAULT_BRANCH, null, new Map([['README.md', new TextEncoder().encode(text)]]),
-          'Initial commit', { name: owner.name, email: owner.email });
-      }
+      await this.ctx.git.openOrInit(this.ctx.repoPath(id));
     } catch (err) {
       await this.delete(repo, owner.handle).catch(() => undefined);
       throw err;

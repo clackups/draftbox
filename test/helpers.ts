@@ -5,6 +5,7 @@ import { finalizeConfig, type Config } from '../src/config.ts';
 import { Context } from '../src/services/context.ts';
 import { NodegitBackend } from '../src/git/nodegit.ts';
 import { MemoryMailer } from '../src/services/mail.ts';
+import type { Repo, User } from '../src/db/models.ts';
 import { createApp, createServices, type Services } from '../src/http/app.ts';
 
 export const ADMIN_EMAIL = 'admin@example.com';
@@ -102,4 +103,13 @@ export async function adminApi(env: TestEnv, method: string, path: string, body?
     headers: { Authorization: `Bearer ${ADMIN_API_KEY}`, 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+}
+
+// A repository with a README.md in its first commit.
+export async function createRepoWithReadme(env: TestEnv, owner: User, name: string, visibility: 'public' | 'private'): Promise<Repo> {
+  const repo = await env.svc.repos.create(owner, { name, description: '', visibility });
+  const git = await env.svc.repos.open(repo);
+  await env.svc.repos.commitFiles(git, 'main', null, new Map([['README.md', new TextEncoder().encode(`# ${name}\n`)]]),
+    'Initial commit', { name: owner.name, email: owner.email });
+  return repo;
 }

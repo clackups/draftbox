@@ -176,7 +176,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     const { blockedBy } = await svc.limits.status(user);
     if (blockedBy) return c.html(newRepoPage(c.var.page, values, blockedBy), 403);
     try {
-      const repo = await svc.repos.create(user, { ...values, initReadme: false });
+      const repo = await svc.repos.create(user, values);
       setFlash(c, 'ok', 'repo_created');
       return c.redirect(urlPath(user.handle, repo.name));
     } catch (err) {

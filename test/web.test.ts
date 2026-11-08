@@ -1115,7 +1115,7 @@ test('deleting a repository or a user removes their tokens and pending passwords
   await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'tom@example.com' });
   await new Browser(env).login('tom@example.com');
   const tom = (await env.svc.users.getByEmail('tom@example.com'))!;
-  const repo = (await env.svc.repos.create(tom, { name: 'gone', description: '', visibility: 'private', initReadme: false }))!;
+  const repo = (await env.svc.repos.create(tom, { name: 'gone', description: '', visibility: 'private' }))!;
   const scoped = await env.svc.tokens.create(tom, { name: 'scoped', repoId: repo.id, access: 'read', validityMonths: null, withOtp: true }, repo);
   const global = await env.svc.tokens.create(tom, { name: 'global', repoId: null, access: 'read', validityMonths: null, withOtp: true }, null);
   const otpIndex = async () => (await env.svc.ctx.store.view().list('index/otp')).length;

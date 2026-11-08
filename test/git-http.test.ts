@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { serve, type ServerType } from '@hono/node-server';
-import { Browser, adminApi, setup, type TestEnv } from './helpers.ts';
+import { Browser, adminApi, createRepoWithReadme, setup, type TestEnv } from './helpers.ts';
 import type { TokenPermission, User } from '../src/db/models.ts';
 
 let env: TestEnv;
@@ -66,9 +66,9 @@ before(async () => {
   const b = new Browser(env);
   await b.login('dana@example.com', 'Dana');
   owner = (await env.svc.users.getByEmail('dana@example.com'))!;
-  await env.svc.repos.create(owner, { name: 'public-doc', description: '', visibility: 'public', initReadme: true });
-  const secret = await env.svc.repos.create(owner, { name: 'secret', description: '', visibility: 'private', initReadme: true });
-  const other = await env.svc.repos.create(owner, { name: 'other', description: '', visibility: 'private', initReadme: false });
+  await createRepoWithReadme(env, owner, 'public-doc', 'public');
+  const secret = await createRepoWithReadme(env, owner, 'secret', 'private');
+  const other = await env.svc.repos.create(owner, { name: 'other', description: '', visibility: 'private' });
   rwToken = (await env.svc.tokens.create(owner, { name: 'rw', repoId: null, access: 'write', validityMonths: null, withOtp: false }, null)).value;
   roToken = (await env.svc.tokens.create(owner, { name: 'ro', repoId: null, access: 'read', validityMonths: 1, withOtp: false }, null)).value;
   scopedToken = (await env.svc.tokens.create(owner, { name: 'scoped', repoId: other.id, access: 'write', validityMonths: null, withOtp: false }, other)).value;
@@ -233,7 +233,7 @@ test('git failures are reported, not served as empty or truncated answers', asyn
 });
 
 test('tokens cannot lose data unless granted the permission', async () => {
-  const repo = (await env.svc.repos.create(owner, { name: 'safe', description: '', visibility: 'private', initReadme: true }))!;
+  const repo = await createRepoWithReadme(env, owner, 'safe', 'private');
   const grant = async (allow: TokenPermission[]) =>
     (await env.svc.tokens.create(owner, { name: 'grant', repoId: repo.id, access: 'write', allow, validityMonths: null, withOtp: false }, repo)).value!;
   const dir = mkdtempSync(join(env.dir, 'w-'));
