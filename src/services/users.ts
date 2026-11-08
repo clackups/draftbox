@@ -204,7 +204,8 @@ export class UserService {
   }
 
   private async uniqueHandle(tx: Tx, email: string): Promise<string> {
-    let base = email.split('@')[0].toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30);
+    // Trimmed after shortening, so that the handle never ends with '-'.
+    let base = email.split('@')[0].toLowerCase().replace(/[^a-z0-9-]+/g, '-').slice(0, 30).replace(/^-+|-+$/g, '');
     if (base.length < 2) base = 'user';
     if (RESERVED_HANDLES.has(base)) base = base + '-user';
     for (let i = 0; ; i++) {

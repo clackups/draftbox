@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { ADMIN_EMAIL, Browser, adminApi, setup, type TestEnv } from './helpers.ts';
 import { DEFAULT_BRANDING } from '../src/db/models.ts';
 import { defaultLandingText } from '../src/services/admin.ts';
+import { HANDLE_RE } from '../src/services/users.ts';
 
 let env: TestEnv;
 
@@ -958,4 +959,14 @@ test('save as PDF: dialog, last change and preferences', async () => {
   assert.doesNotMatch(page.text, /name="remember"/);
   assert.notEqual((await guest.post('/settings/pdf', { paper: 'A3' })).res.status, 204);
   assert.equal((await env.svc.users.getByEmail('pam@example.com'))!.prefs.pdf?.paper, 'A5');
+});
+
+test('a shortened handle never ends with a hyphen', async () => {
+  await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'abcdefghijklmnopqrstuvwxyzabc.d@example.com' });
+  const b = new Browser(env);
+  assert.equal((await b.login('abcdefghijklmnopqrstuvwxyzabc.d@example.com')).status, 302);
+  const user = (await env.svc.users.getByEmail('abcdefghijklmnopqrstuvwxyzabc.d@example.com'))!;
+  assert.equal(user.handle, 'abcdefghijklmnopqrstuvwxyzabc');
+  assert.match(user.handle, HANDLE_RE);
+  assert.equal((await b.get('/' + user.handle)).res.status, 200);
 });
