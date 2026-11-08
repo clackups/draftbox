@@ -120,6 +120,25 @@ class NodegitRepo implements GitRepo {
     return commits.slice(skip).map(commitInfo);
   }
 
+  async *walk(startOid: string): AsyncGenerator<CommitInfo> {
+    const NG = ng();
+    const walk = NG.Revwalk.create(this.repo);
+    walk.sorting(NG.Revwalk.SORT.TOPOLOGICAL | NG.Revwalk.SORT.TIME);
+    walk.push(NG.Oid.fromString(startOid));
+    for (;;) {
+      let oid: Any;
+      try {
+        oid = await walk.next();
+      } catch (err) {
+        // GIT_ITEROVER == -31: the end of the history.
+        if ((err as { errno?: number })?.errno === -31) return;
+        throw err;
+      }
+      if (!oid) return;
+      yield commitInfo(await this.repo.getCommit(oid));
+    }
+  }
+
   async readTree(treeOid: string): Promise<TreeEntry[]> {
     const tree = await this.repo.getTree(treeOid);
     return tree.entries().map((e: Any) => {

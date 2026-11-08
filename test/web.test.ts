@@ -1131,3 +1131,25 @@ test('deleting a repository or a user removes their tokens and pending passwords
   assert.equal(await env.svc.tokens.peekOtp(global.otp!), null);
   assert.equal(await otpIndex(), before - 2);
 });
+
+test('the last change of a file is found in a long history, within the limit', async () => {
+  await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'hist@example.com' });
+  await new Browser(env).login('hist@example.com');
+  const user = (await env.svc.users.getByEmail('hist@example.com'))!;
+  const repo = await env.svc.repos.create(user, { name: 'long', description: '', visibility: 'private' });
+  const git = await env.svc.repos.open(repo);
+  const enc = new TextEncoder();
+  const who = { name: 'H', email: 'h@example.com' };
+  await env.svc.repos.commitFiles(git, 'main', null, new Map([['old.md', enc.encode('old\n')]]), 'Write old.md', who);
+  for (let i = 0; i < 250; i++) {
+    const head = await env.svc.repos.resolveBranch(git, 'main');
+    await env.svc.repos.commitFiles(git, 'main', head, new Map([['busy.md', enc.encode(`${i}\n`)]]), `Edit ${i}`, who);
+  }
+  const head = (await env.svc.repos.resolveBranch(git, 'main'))!;
+  assert.equal((await env.svc.repos.lastChange(git, head, 'old.md'))?.message, 'Write old.md');
+  assert.equal((await env.svc.repos.lastChange(git, head, 'busy.md'))?.message, 'Edit 249');
+  assert.equal(await env.svc.repos.lastChange(git, head, 'old.md', 100), null);
+  let n = 0;
+  for await (const c of git.walk(head)) if (c.oid) n++;
+  assert.equal(n, 251);
+});

@@ -304,14 +304,11 @@ export class RepoService {
       }
       return oid;
     };
-    const batch = 100;
-    for (let skip = 0; skip < maxCommits; skip += batch) {
-      const commits = await git.log(commitOid, batch, skip);
-      for (const c of commits) {
-        const parent = c.parents[0] ? await git.getCommit(c.parents[0]) : null;
-        if ((await blobAt(c.treeOid)) !== (await blobAt(parent?.treeOid))) return c;
-      }
-      if (commits.length < batch) break;
+    let n = 0;
+    for await (const c of git.walk(commitOid)) {
+      if (++n > maxCommits) break;
+      const parent = c.parents[0] ? await git.getCommit(c.parents[0]) : null;
+      if ((await blobAt(c.treeOid)) !== (await blobAt(parent?.treeOid))) return c;
     }
     return null;
   }

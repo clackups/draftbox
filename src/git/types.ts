@@ -68,6 +68,9 @@ export interface GitRepo {
   listRefs(prefix: string): Promise<RefInfo[]>;
   getCommit(oid: string): Promise<CommitInfo | null>;
   log(startOid: string, limit: number, skip?: number): Promise<CommitInfo[]>;
+  // The history from startOid in the order of log(), read as it is
+  // consumed (no cost for the part that is not read).
+  walk(startOid: string): AsyncIterable<CommitInfo>;
   readTree(treeOid: string): Promise<TreeEntry[]>;
   lookupPath(treeOid: string, path: string): Promise<TreeEntry | null>;
   readBlob(oid: string): Promise<Uint8Array>;
