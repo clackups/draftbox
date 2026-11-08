@@ -302,9 +302,8 @@ export function registerAdminRoutes(app: Hono<AppEnv>, svc: Services): void {
   app.post('/admin/invitations', async (c) => {
     const admin = requireAdmin(c);
     const f = await formFields(c);
-    const days = Number(f.days);
     const limits = parseLimitGrant(f.storageQuotaMb, f.timeLimitDays);
-    const { code } = await svc.invites.create(admin.id, f.note ?? '', days > 0 ? days : null, limits);
+    const { code } = await svc.invites.create(admin.id, f.note ?? '', Number(f.days) || null, limits);
     c.header('Cache-Control', 'no-store');
     return c.html(await renderInvites(c.var.page, svc.invites.link(code)));
   });

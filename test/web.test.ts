@@ -1044,3 +1044,16 @@ test('a branch or tag changed since the page was opened is not deleted', async (
   assert.equal(r.res.status, 302);
   assert.equal(await git.resolveRef('refs/tags/v1'), null);
 });
+
+test('invitation validity is capped at a year', async () => {
+  const admin = new Browser(env);
+  await admin.login(ADMIN_EMAIL);
+  await admin.get('/admin/invitations');
+  const r = await admin.post('/admin/invitations', { note: 'forever', days: '1e300', storageQuotaMb: '', timeLimitDays: '' });
+  assert.equal(r.res.status, 200);
+  const inv = (await env.svc.invites.list()).find((i) => i.note === 'forever')!;
+  const days = (Date.parse(inv.expiresAt!) - Date.parse(inv.createdAt)) / 86400_000;
+  assert.equal(days, 365);
+  const api = await adminApi(env, 'POST', '/api/v1/admin/invitations', { note: 'api', expiresDays: 10_000 });
+  assert.equal(api.status, 201);
+});

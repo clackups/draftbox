@@ -30,6 +30,8 @@ function normalizeText(s: string): string {
   return s.replace(/\r\n?/g, '\n').trim();
 }
 
+export const MAX_INVITATION_DAYS = 365;
+
 export class InvitationService {
   private ctx: Context;
 
@@ -37,15 +39,18 @@ export class InvitationService {
     this.ctx = ctx;
   }
 
+  // `expiresDays`: validity in days, at most MAX_INVITATION_DAYS; null
+  // (or a value that is not a positive number) means no expiry.
   async create(createdBy: string, note: string, expiresDays: number | null, limits: LimitGrant = {}): Promise<{ invitation: Invitation; code: string }> {
     const code = randomSecret(24);
     const now = Date.now();
+    const days = expiresDays !== null && expiresDays > 0 ? Math.min(expiresDays, MAX_INVITATION_DAYS) : null;
     const invitation: Invitation = {
       id: randomId(),
       codeHash: sha256hex(code),
       createdBy,
       createdAt: new Date(now).toISOString(),
-      expiresAt: expiresDays ? new Date(now + expiresDays * 86400_000).toISOString() : null,
+      expiresAt: days ? new Date(now + days * 86400_000).toISOString() : null,
       note: note.trim().slice(0, 200),
     };
     if (Object.keys(limits).length > 0) invitation.limits = limits;

@@ -218,7 +218,7 @@ export function registerApiRoutes(app: Hono<AppEnv>, svc: Services): void {
       if (err instanceof ServiceError) return c.json({ error: err.code }, 400);
       throw err;
     }
-    const { invitation, code } = await svc.invites.create('api', String(body.note ?? ''), days > 0 ? Math.min(days, 365) : null, limits);
+    const { invitation, code } = await svc.invites.create('api', String(body.note ?? ''), days > 0 ? days : null, limits);
     return c.json({ id: invitation.id, link: svc.invites.link(code), expiresAt: invitation.expiresAt, limits: invitation.limits ?? {} }, 201);
   });
 
