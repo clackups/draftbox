@@ -8,7 +8,7 @@ import { documentTitle } from '../util/doctitle.ts';
 import { isMarkdownPath, renderMarkdown, type LinkResolver } from '../util/markdown.ts';
 import { isFountainPath, renderFountain } from '../util/fountain.ts';
 import { diffLines, hunks } from '../util/diff.ts';
-import { urlPath } from '../views/html.ts';
+import { escapeHtml, urlPath } from '../views/html.ts';
 import {
   type DocFormat, type FileChange, type RepoCtx, blobPage, branchesPage, commitPage, commitsPage, editPage, emptyRepoPage,
   explorePage, homePage, landingPage, privacyPage, newRepoPage, profilePage, repoSettingsPage, repoUrl, tagsPage, treePage,
@@ -220,7 +220,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
       if (text !== null) {
         readme = {
           name: readmeEntry.name,
-          html: isMarkdownPath(readmeEntry.name) ? renderMarkdown(text, resolver(rc, path)) : `<pre>${text.replace(/[&<>]/g, (ch) => (ch === '&' ? '&amp;' : ch === '<' ? '&lt;' : '&gt;'))}</pre>`,
+          html: isMarkdownPath(readmeEntry.name) ? renderMarkdown(text, resolver(rc, path)) : `<pre>${escapeHtml(text)}</pre>`,
         };
       }
     }
