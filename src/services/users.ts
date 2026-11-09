@@ -403,6 +403,7 @@ export class UserService {
         if (repoId) {
           repoIds.push(repoId);
           tx.delete(`repos/${repoId}.json`);
+          tx.delete(`index/public/${repoId}`);
         }
       }
       await tx.deleteTree(`index/repo/${userId}`);

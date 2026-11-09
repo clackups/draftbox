@@ -18,9 +18,10 @@
 //   index/invite/<sha256(code)>          inviteId
 //   index/otp/<hmac(password)>           tokenId
 //   index/user-tokens/<userId>/<tokenId> tokenId
+//   index/public/<repoId>                ownerId (public repositories)
 //   index/email-verify/<sha256(code)>    userId (pending contact email)
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export type Language = string;
 export type Theme = 'auto' | 'light' | 'dark';
@@ -157,6 +158,12 @@ export function contactEmailOf(user: User): string {
 }
 
 export type Visibility = 'public' | 'private';
+
+// Keeps index/public in step with the visibility of a repository.
+export function indexVisibility(tx: { putText(path: string, value: string): void; delete(path: string): void }, repo: Repo): void {
+  if (repo.visibility === 'public') tx.putText(`index/public/${repo.id}`, repo.ownerId);
+  else tx.delete(`index/public/${repo.id}`);
+}
 
 export interface Repo {
   id: string;

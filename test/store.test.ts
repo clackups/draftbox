@@ -70,12 +70,15 @@ test('migrations bring a version 1 database up to date', async () => {
     tx.put('schema.json', { version: 1 });
     tx.put('tokens/t1.json', { id: 't1', userId: 'u1', repoId: null });
     tx.put('tokens/t2.json', { id: 't2', userId: 'u2', repoId: 'r1' });
+    tx.put('repos/r1.json', { id: 'r1', ownerId: 'u2', name: 'a', visibility: 'public' });
+    tx.put('repos/r2.json', { id: 'r2', ownerId: 'u2', name: 'b', visibility: 'private' });
   });
   await migrate(old);
   const view = old.view();
   assert.deepEqual(await view.get('schema.json'), { version: SCHEMA_VERSION });
   assert.deepEqual(await view.list('index/user-tokens/u1'), ['t1']);
   assert.deepEqual(await view.list('index/user-tokens/u2'), ['t2']);
+  assert.deepEqual(await view.list('index/public'), ['r1']);
   // Running again changes nothing.
   const head = old.head;
   await migrate(old);

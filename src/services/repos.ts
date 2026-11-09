@@ -3,7 +3,7 @@ import { rm } from 'node:fs/promises';
 import { processOutput } from '../util/process.ts';
 import type { Context } from './context.ts';
 import { ServiceError } from './context.ts';
-import type { Repo, User, Visibility } from '../db/models.ts';
+import { indexVisibility, type Repo, type User, type Visibility } from '../db/models.ts';
 import type { CommitInfo, GitRepo, RefInfo, TreeChanges, TreeEntry } from '../git/types.ts';
 import { PathConflictError, RefConflictError, isGitDirName } from '../git/types.ts';
 import { randomId } from '../util/crypto.ts';
@@ -74,8 +74,8 @@ export class RepoService {
     const view = this.store.view();
     const out: Array<{ repo: Repo; owner: User }> = [];
     const owners = new Map<string, User | null>();
-    for (const name of await view.list('repos')) {
-      const repo = await view.get<Repo>(`repos/${name}`);
+    for (const id of await view.list('index/public')) {
+      const repo = await view.get<Repo>(`repos/${id}.json`);
       if (!repo || repo.visibility !== 'public') continue;
       if (!owners.has(repo.ownerId)) owners.set(repo.ownerId, await view.get<User>(`users/${repo.ownerId}.json`));
       const owner = owners.get(repo.ownerId);
@@ -102,6 +102,7 @@ export class RepoService {
       if (await tx.getText(`index/repo/${owner.id}/${name}`)) throw new ServiceError('repo_exists');
       tx.put(`repos/${id}.json`, repo);
       tx.putText(`index/repo/${owner.id}/${name}`, id);
+      indexVisibility(tx, repo);
     });
     try {
       await this.ctx.git.openOrInit(this.ctx.repoPath(id));
@@ -127,6 +128,7 @@ export class RepoService {
       if (patch.description !== undefined) cur.description = patch.description.trim().slice(0, 500);
       if (patch.visibility !== undefined) cur.visibility = patch.visibility === 'public' ? 'public' : 'private';
       tx.put(`repos/${cur.id}.json`, cur);
+      indexVisibility(tx, cur);
       return cur;
     });
   }
@@ -135,6 +137,7 @@ export class RepoService {
     await this.store.transact(`Delete repository ${repo.id} by ${actor}`, async (tx) => {
       tx.delete(`repos/${repo.id}.json`);
       tx.delete(`index/repo/${repo.ownerId}/${repo.name}`);
+      tx.delete(`index/public/${repo.id}`);
       // Repository-scoped tokens become useless; remove them as well.
       // They always belong to the owner.
       await deleteUserTokens(tx, repo.ownerId, (t) => t.repoId === repo.id);

@@ -1170,3 +1170,24 @@ test('storage use is measured again after every write, not on every page', async
   await uma.post(`/${user.handle}/u/new`, { ref: 'main', base: '', dir: '', name: 'a.md', content: 'a\n', message: '' });
   assert.ok((await env.svc.limits.usedBytes(user.id)) >= first + 50_000);
 });
+
+test('explore lists public repositories through their index', async () => {
+  await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'vic@example.com' });
+  const vic = new Browser(env);
+  await vic.login('vic@example.com');
+  const user = (await env.svc.users.getByEmail('vic@example.com'))!;
+  await vic.post('/new', { name: 'shown', description: '', visibility: 'public' });
+  await vic.post('/new', { name: 'hidden', description: '', visibility: 'private' });
+  const explore = async () => (await new Browser(env).get('/explore')).text;
+  const indexed = async () => env.svc.ctx.store.view().list('index/public');
+  const shown = (await env.svc.repos.getByName(user, 'shown'))!;
+  assert.match(await explore(), new RegExp(`${user.handle} / shown`));
+  assert.doesNotMatch(await explore(), new RegExp(`${user.handle} / hidden`));
+  assert.ok((await indexed()).includes(shown.id));
+  await vic.post(`/${user.handle}/shown/settings`, { name: 'shown', description: '', visibility: 'private' });
+  assert.doesNotMatch(await explore(), new RegExp(`${user.handle} / shown`));
+  assert.ok(!(await indexed()).includes(shown.id));
+  await vic.post(`/${user.handle}/shown/settings`, { name: 'shown', description: '', visibility: 'public' });
+  await env.svc.repos.delete(shown, 'test');
+  assert.ok(!(await indexed()).includes(shown.id));
+});
