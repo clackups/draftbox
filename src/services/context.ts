@@ -45,7 +45,7 @@ export class Context {
         tx.put('schema.json', { version: SCHEMA_VERSION });
       });
     }
-    await migrate(store);
+    await migrate(store, config);
     return new Context(config, git, store, dataDir, mailer);
   }
 

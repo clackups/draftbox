@@ -4,7 +4,7 @@ import { ServiceError } from './context.ts';
 import type { ReadView, Tx } from '../db/store.ts';
 import {
   type Invitation, type Preregistration, type User, type UserPrefs,
-  contactEmailOf, readBranding, USER_THEMES, normalizePdfPrefs, pdfPrefsOf,
+  contactEmailOf, readBranding, revokedSessionDay, USER_THEMES, normalizePdfPrefs, pdfPrefsOf,
 } from '../db/models.ts';
 import { randomId, randomSecret, sha256hex } from '../util/crypto.ts';
 import { isSupportedLanguage, translator } from '../i18n/index.ts';
@@ -358,21 +358,26 @@ export class UserService {
 
   // Ends a web session before it expires. Records of sessions that have
   // expired meanwhile are dropped.
-  async revokeSession(sid: string, expiresAt: number): Promise<void> {
+  // Records a logged-out session until it would have expired anyway.
+  // Entries are grouped by the day the session was issued (`issuedAt`,
+  // from its cookie), so cleaning up only removes the folders of days
+  // whose sessions have all expired.
+  async revokeSession(sid: string, issuedAt: number): Promise<void> {
     if (!SESSION_ID_RE.test(sid)) return;
+    const maxAge = this.ctx.config.sessionMaxAgeDays * 86400_000;
     await this.store.transact('Revoke session', async (tx) => {
-      const now = Date.now();
-      for (const name of await tx.list('revoked-sessions')) {
-        const until = await tx.getText(`revoked-sessions/${name}`);
-        if (until !== null && Date.parse(until) <= now) tx.delete(`revoked-sessions/${name}`);
+      // Sessions issued before this day are expired (with a day's margin).
+      const oldest = revokedSessionDay(Date.now() - maxAge - 86400_000);
+      for (const day of await tx.list('revoked-sessions')) {
+        if (day < oldest) await tx.deleteTree(`revoked-sessions/${day}`);
       }
-      if (expiresAt > now) tx.putText(`revoked-sessions/${sid}`, new Date(expiresAt).toISOString());
+      if (issuedAt + maxAge > Date.now()) tx.putText(`revoked-sessions/${revokedSessionDay(issuedAt)}/${sid}`, '');
     });
   }
 
-  async isSessionRevoked(sid: string): Promise<boolean> {
+  async isSessionRevoked(sid: string, issuedAt: number): Promise<boolean> {
     if (!SESSION_ID_RE.test(sid)) return true;
-    return (await this.store.view().getText(`revoked-sessions/${sid}`)) !== null;
+    return (await this.store.view().getText(`revoked-sessions/${revokedSessionDay(issuedAt)}/${sid}`)) !== null;
   }
 
   async setBlocked(userId: string, blocked: boolean, actor: string): Promise<User> {

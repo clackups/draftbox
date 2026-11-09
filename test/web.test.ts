@@ -820,6 +820,16 @@ test('a session cookie stops working after logging out', async () => {
   assert.equal(res.res.status, 302);
   assert.match(res.res.headers.get('location') ?? '', /^\/login/);
   assert.equal((await other.get('/settings')).res.status, 200);
+
+  // Logging out removes the records of days whose sessions all expired.
+  const store = env.svc.ctx.store;
+  const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+  const expired = day(Date.now() - (env.config.sessionMaxAgeDays + 3) * 86400_000);
+  await store.transact('old revoked session', async (tx) => tx.putText(`revoked-sessions/${expired}/${'c'.repeat(32)}`, ''));
+  await other.post('/logout', {});
+  const days = await store.view().list('revoked-sessions');
+  assert.ok(!days.includes(expired));
+  assert.ok(days.includes(day(Date.now())));
 });
 
 test('a released user name is kept for its previous owner', async () => {

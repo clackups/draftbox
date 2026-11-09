@@ -9,7 +9,8 @@
 //   preregistrations/<sha256(email)>.json Preregistration
 //   settings/branding.json               Branding
 //   settings/logo                        logo image (raw bytes)
-//   revoked-sessions/<sessionId>         expiry of a logged-out session
+//   revoked-sessions/<day>/<sessionId>   '' for a logged-out session, grouped
+//                                        by the day (UTC) it was issued
 //   retired-handles/<handle>.json        previous owner of a released handle
 //   index/email/<sha256(email)>          userId
 //   index/handle/<handle>                userId
@@ -21,7 +22,7 @@
 //   index/public/<repoId>                ownerId (public repositories)
 //   index/email-verify/<sha256(code)>    userId (pending contact email)
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export type Language = string;
 export type Theme = 'auto' | 'light' | 'dark';
@@ -158,6 +159,12 @@ export function contactEmailOf(user: User): string {
 }
 
 export type Visibility = 'public' | 'private';
+
+// Folder of revoked-sessions/ for a session issued at `ms` (the day,
+// UTC). The issue time is in the session cookie and never changes.
+export function revokedSessionDay(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
 
 // Keeps index/public in step with the visibility of a repository.
 export function indexVisibility(tx: { putText(path: string, value: string): void; delete(path: string): void }, repo: Repo): void {

@@ -72,15 +72,21 @@ test('migrations bring a version 1 database up to date', async () => {
     tx.put('tokens/t2.json', { id: 't2', userId: 'u2', repoId: 'r1' });
     tx.put('repos/r1.json', { id: 'r1', ownerId: 'u2', name: 'a', visibility: 'public' });
     tx.put('repos/r2.json', { id: 'r2', ownerId: 'u2', name: 'b', visibility: 'private' });
+    // A session revoked 10 days into its 30, and one already expired.
+    tx.putText(`revoked-sessions/${'a'.repeat(32)}`, new Date(Date.now() + 20 * 86400_000).toISOString());
+    tx.putText(`revoked-sessions/${'b'.repeat(32)}`, new Date(Date.now() - 86400_000).toISOString());
   });
-  await migrate(old);
+  await migrate(old, { sessionMaxAgeDays: 30 });
   const view = old.view();
   assert.deepEqual(await view.get('schema.json'), { version: SCHEMA_VERSION });
   assert.deepEqual(await view.list('index/user-tokens/u1'), ['t1']);
   assert.deepEqual(await view.list('index/user-tokens/u2'), ['t2']);
   assert.deepEqual(await view.list('index/public'), ['r1']);
+  const issued = new Date(Date.now() - 10 * 86400_000).toISOString().slice(0, 10);
+  assert.deepEqual(await view.list('revoked-sessions'), [issued]);
+  assert.deepEqual(await view.list(`revoked-sessions/${issued}`), ['a'.repeat(32)]);
   // Running again changes nothing.
   const head = old.head;
-  await migrate(old);
+  await migrate(old, { sessionMaxAgeDays: 30 });
   assert.equal(old.head, head);
 });

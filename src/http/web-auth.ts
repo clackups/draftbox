@@ -155,7 +155,7 @@ export function registerAuthRoutes(app: Hono<AppEnv>, svc: Services): void {
   app.post('/logout', async (c) => {
     // A copy of the cookie must not keep working after logging out.
     const session = c.var.session;
-    if (session) await svc.users.revokeSession(session.sid, session.iat + cfg.sessionMaxAgeDays * 86400_000);
+    if (session) await svc.users.revokeSession(session.sid, session.iat);
     deleteCookie(c, SESSION_COOKIE, { path: '/' });
     return c.redirect('/');
   });
