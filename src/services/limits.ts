@@ -105,10 +105,16 @@ export function limitsForNewUser(grant: LimitGrant | undefined, createdAt: strin
   return out;
 }
 
+const USAGE_MAX_AGE_MS = 60_000;
+
 export class LimitService {
   private ctx: Context;
   // Tail of the queue of writes (pushes, web commits) of each account.
   private writeQueues = new Map<string, Promise<void>>();
+  // Storage used by each account, measured at `at`. Every write clears
+  // the entry when it ends (see lockWrites); the age limit covers
+  // changes made outside the service.
+  private usage = new Map<string, { bytes: number; at: number }>();
 
   constructor(ctx: Context) {
     this.ctx = ctx;
@@ -139,14 +145,19 @@ export class LimitService {
     };
   }
 
-  // Disk space taken by all repositories of the user.
+  // Disk space taken by all repositories of the user. Measuring walks
+  // every file, so the result is kept until the next write.
   async usedBytes(userId: string): Promise<number> {
+    const cached = this.usage.get(userId);
+    if (cached && Date.now() - cached.at < USAGE_MAX_AGE_MS) return cached.bytes;
+    const at = Date.now();
     const view = this.ctx.store.view();
     let total = 0;
     for (const name of await view.list(`index/repo/${userId}`)) {
       const id = await view.getText(`index/repo/${userId}/${name}`);
       if (id) total += await dirSize(this.ctx.repoPath(id));
     }
+    this.usage.set(userId, { bytes: total, at });
     return total;
   }
 
@@ -187,9 +198,21 @@ export class LimitService {
     return () => {
       if (released) return;
       released = true;
+      this.usage.delete(userId);
       open();
       if (this.writeQueues.get(userId) === tail) this.writeQueues.delete(userId);
     };
+  }
+
+  // Runs a write of the account's repositories that adds little data
+  // (tags, branches, deletions) in the account's queue of writes.
+  async withWrite<T>(userId: string, write: () => Promise<T>): Promise<T> {
+    const release = await this.lockWrites(userId);
+    try {
+      return await write();
+    } finally {
+      release();
+    }
   }
 
   // Runs a write that adds up to `bytes` of data: after the account's

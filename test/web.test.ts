@@ -1,6 +1,8 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { ADMIN_EMAIL, Browser, adminApi, setup, type TestEnv } from './helpers.ts';
 import { DEFAULT_BRANDING } from '../src/db/models.ts';
 import { defaultLandingText } from '../src/services/admin.ts';
@@ -1152,4 +1154,19 @@ test('the last change of a file is found in a long history, within the limit', a
   let n = 0;
   for await (const c of git.walk(head)) if (c.oid) n++;
   assert.equal(n, 251);
+});
+
+test('storage use is measured again after every write, not on every page', async () => {
+  await adminApi(env, 'POST', '/api/v1/admin/preregistrations', { email: 'uma@example.com' });
+  const uma = new Browser(env);
+  await uma.login('uma@example.com');
+  await uma.post('/new', { name: 'u', description: '', visibility: 'private' });
+  const user = (await env.svc.users.getByEmail('uma@example.com'))!;
+  const repo = (await env.svc.repos.getByName(user, 'u'))!;
+  const first = await env.svc.limits.usedBytes(user.id);
+  // A change behind the service's back is not seen until the next write.
+  writeFileSync(join(env.svc.ctx.repoPath(repo.id), 'extra'), randomBytes(50_000));
+  assert.equal(await env.svc.limits.usedBytes(user.id), first);
+  await uma.post(`/${user.handle}/u/new`, { ref: 'main', base: '', dir: '', name: 'a.md', content: 'a\n', message: '' });
+  assert.ok((await env.svc.limits.usedBytes(user.id)) >= first + 50_000);
 });

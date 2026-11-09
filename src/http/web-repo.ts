@@ -176,7 +176,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     const { blockedBy } = await svc.limits.status(user);
     if (blockedBy) return c.html(newRepoPage(c.var.page, values, blockedBy), 403);
     try {
-      const repo = await svc.repos.create(user, values);
+      const repo = await svc.limits.withWrite(user.id, () => svc.repos.create(user, values));
       setFlash(c, 'ok', 'repo_created');
       return c.redirect(urlPath(user.handle, repo.name));
     } catch (err) {
@@ -423,7 +423,8 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     requireWritable(rc);
     const path = subPath(c, 'delete');
     if (!path) return c.notFound();
-    await svc.repos.commitFiles(rc.git, rc.ref, f.base || null, new Map([[path, null]]), `Delete ${path}`, author(c));
+    await svc.limits.withWrite(rc.owner.id, () =>
+      svc.repos.commitFiles(rc.git, rc.ref, f.base || null, new Map([[path, null]]), `Delete ${path}`, author(c)));
     setFlash(c, 'ok', 'file_deleted');
     const dir = dirname(path);
     // The directory disappears with its last file; fall back to the root.
@@ -501,7 +502,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     requireWritable(rc);
     const f = await formFields(c);
     const target = rc.advanced ? (f.target || DEFAULT_BRANCH) : DEFAULT_BRANCH;
-    await svc.repos.createTag(rc.git, (f.name ?? '').trim(), target, f.message ?? '', author(c));
+    await svc.limits.withWrite(rc.owner.id, () => svc.repos.createTag(rc.git, (f.name ?? '').trim(), target, f.message ?? '', author(c)));
     setFlash(c, 'ok', 'tag_created');
     return c.redirect(repoUrl(rc, 'tags'));
   });
@@ -509,7 +510,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
   app.post('/:owner/:repo/tags/delete', async (c) => {
     const rc = await loadRepo(c, svc, { owner: true });
     const f = await formFields(c);
-    await svc.repos.deleteTag(rc.git, f.name ?? '', f.oid ?? '');
+    await svc.limits.withWrite(rc.owner.id, () => svc.repos.deleteTag(rc.git, f.name ?? '', f.oid ?? ''));
     setFlash(c, 'ok', 'tag_deleted');
     return c.redirect(repoUrl(rc, 'tags'));
   });
@@ -531,7 +532,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     requireWritable(rc);
     const f = await formFields(c);
     const name = (f.name ?? '').trim();
-    await svc.repos.createBranch(rc.git, name, f.from || DEFAULT_BRANCH);
+    await svc.limits.withWrite(rc.owner.id, () => svc.repos.createBranch(rc.git, name, f.from || DEFAULT_BRANCH));
     setFlash(c, 'ok', 'branch_created');
     return c.redirect(repoUrl(rc) + '?ref=' + encodeURIComponent(name));
   });
@@ -540,7 +541,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     const rc = await loadRepo(c, svc, { owner: true });
     if (!rc.advanced) throw new ServiceError('advanced_mode_required', 403);
     const f = await formFields(c);
-    await svc.repos.deleteBranch(rc.git, f.name ?? '', f.oid ?? '');
+    await svc.limits.withWrite(rc.owner.id, () => svc.repos.deleteBranch(rc.git, f.name ?? '', f.oid ?? ''));
     setFlash(c, 'ok', 'branch_deleted');
     return c.redirect(repoUrl(rc, 'branches'));
   });
@@ -580,7 +581,7 @@ export function registerRepoRoutes(app: Hono<AppEnv>, svc: Services): void {
     const rc = await loadRepo(c, svc, { owner: true });
     const f = await formFields(c);
     if ((f.confirm ?? '').trim() !== rc.repo.name) return c.html(await settingsPage(rc, 'confirm_mismatch'), 400);
-    await svc.repos.delete(rc.repo, rc.owner.email);
+    await svc.limits.withWrite(rc.owner.id, () => svc.repos.delete(rc.repo, rc.owner.email));
     setFlash(c, 'ok', 'repo_deleted');
     return c.redirect('/');
   });
