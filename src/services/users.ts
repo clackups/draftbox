@@ -9,7 +9,7 @@ import {
 import { randomId, randomSecret, sha256hex } from '../util/crypto.ts';
 import { isSupportedLanguage, translator } from '../i18n/index.ts';
 import { limitsForNewUser } from './limits.ts';
-import { deleteTokensWhere } from './tokens.ts';
+import { deleteUserTokens } from './tokens.ts';
 
 // Handles that would collide with top-level web routes.
 // First path segments of the site's own pages; test/web.test.ts checks
@@ -406,7 +406,7 @@ export class UserService {
         }
       }
       await tx.deleteTree(`index/repo/${userId}`);
-      await deleteTokensWhere(tx, (t) => t.userId === userId);
+      await deleteUserTokens(tx, userId);
       for (const ident of user.identities) {
         tx.delete(`index/identity/${ident.provider}/${sha256hex(ident.subject)}`);
       }

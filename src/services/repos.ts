@@ -7,7 +7,7 @@ import type { Repo, User, Visibility } from '../db/models.ts';
 import type { CommitInfo, GitRepo, RefInfo, TreeChanges, TreeEntry } from '../git/types.ts';
 import { PathConflictError, RefConflictError, isGitDirName } from '../git/types.ts';
 import { randomId } from '../util/crypto.ts';
-import { deleteTokensWhere } from './tokens.ts';
+import { deleteUserTokens } from './tokens.ts';
 
 export const REPO_NAME_RE = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,99}$/;
 export const DEFAULT_BRANCH = 'main';
@@ -136,7 +136,8 @@ export class RepoService {
       tx.delete(`repos/${repo.id}.json`);
       tx.delete(`index/repo/${repo.ownerId}/${repo.name}`);
       // Repository-scoped tokens become useless; remove them as well.
-      await deleteTokensWhere(tx, (t) => t.repoId === repo.id);
+      // They always belong to the owner.
+      await deleteUserTokens(tx, repo.ownerId, (t) => t.repoId === repo.id);
     });
     await rm(this.ctx.repoPath(repo.id), { recursive: true, force: true });
   }

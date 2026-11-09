@@ -61,9 +61,9 @@ export class TokenService {
   async listForUser(userId: string): Promise<AccessToken[]> {
     const view = this.store.view();
     const out: AccessToken[] = [];
-    for (const name of await view.list('tokens')) {
-      const t = await view.get<AccessToken>(`tokens/${name}`);
-      if (t && t.userId === userId) out.push(t);
+    for (const id of await view.list(`index/user-tokens/${userId}`)) {
+      const t = await view.get<AccessToken>(`tokens/${id}.json`);
+      if (t) out.push(t);
     }
     return out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
@@ -99,6 +99,7 @@ export class TokenService {
     await this.store.transact(`Create token ${id} for ${user.id}`, async (tx) => {
       if (opts.withOtp) otp = await this.attachOtp(tx, token, value);
       tx.put(`tokens/${id}.json`, token);
+      tx.putText(`index/user-tokens/${user.id}/${id}`, id);
     });
     return { token, value, otp };
   }
@@ -203,17 +204,18 @@ export class TokenService {
   }
 }
 
-// Removes a token and the index entry of its pending one-time password.
+// Removes a token with its index entries.
 export function deleteToken(tx: Tx, token: AccessToken): void {
   if (token.otp) tx.delete(`index/otp/${token.otp.key}`);
+  tx.delete(`index/user-tokens/${token.userId}/${token.id}`);
   tx.delete(`tokens/${token.id}.json`);
 }
 
-// Removes the tokens that `match` selects, e.g. those of a deleted user
-// or repository.
-export async function deleteTokensWhere(tx: Tx, match: (token: AccessToken) => boolean): Promise<void> {
-  for (const name of await tx.list('tokens')) {
-    const token = await tx.get<AccessToken>(`tokens/${name}`);
+// Removes the tokens of a user that `match` selects (all by default),
+// e.g. when the user or one of their repositories is deleted.
+export async function deleteUserTokens(tx: Tx, userId: string, match: (token: AccessToken) => boolean = () => true): Promise<void> {
+  for (const id of await tx.list(`index/user-tokens/${userId}`)) {
+    const token = await tx.get<AccessToken>(`tokens/${id}.json`);
     if (token && match(token)) deleteToken(tx, token);
   }
 }

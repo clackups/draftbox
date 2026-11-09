@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NodegitBackend } from '../src/git/nodegit.ts';
 import { MetaStore } from '../src/db/store.ts';
+import { migrate } from '../src/db/migrations.ts';
+import { SCHEMA_VERSION } from '../src/db/models.ts';
 
 let dir: string;
 let store: MetaStore;
@@ -58,4 +60,24 @@ test('external ref updates are detected and retried', async () => {
   const view = store.view();
   assert.deepEqual(await view.get('ext.json'), { ok: true });
   assert.deepEqual(await view.get('local.json'), { ok: true });
+});
+
+test('migrations bring a version 1 database up to date', async () => {
+  const repo = await new NodegitBackend().openOrInit(join(dir, 'old.git'));
+  const old = new MetaStore(repo);
+  await old.load();
+  await old.transact('version 1 data', async (tx) => {
+    tx.put('schema.json', { version: 1 });
+    tx.put('tokens/t1.json', { id: 't1', userId: 'u1', repoId: null });
+    tx.put('tokens/t2.json', { id: 't2', userId: 'u2', repoId: 'r1' });
+  });
+  await migrate(old);
+  const view = old.view();
+  assert.deepEqual(await view.get('schema.json'), { version: SCHEMA_VERSION });
+  assert.deepEqual(await view.list('index/user-tokens/u1'), ['t1']);
+  assert.deepEqual(await view.list('index/user-tokens/u2'), ['t2']);
+  // Running again changes nothing.
+  const head = old.head;
+  await migrate(old);
+  assert.equal(old.head, head);
 });

@@ -4,6 +4,7 @@ import type { Config } from '../config.ts';
 import type { GitBackend } from '../git/types.ts';
 import { MetaStore } from '../db/store.ts';
 import { SCHEMA_VERSION } from '../db/models.ts';
+import { migrate } from '../db/migrations.ts';
 import { createMailer, type Mailer } from './mail.ts';
 
 export class ServiceError extends Error {
@@ -44,6 +45,7 @@ export class Context {
         tx.put('schema.json', { version: SCHEMA_VERSION });
       });
     }
+    await migrate(store);
     return new Context(config, git, store, dataDir, mailer);
   }
 

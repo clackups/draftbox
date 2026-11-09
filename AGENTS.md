@@ -99,8 +99,9 @@ Implementation map
   libgit2 bindings (e.g. for Bun or Deno) plug in by implementing
   `GitBackend`.
 * `src/db/` - transactional JSON store over the bare metadata
-  repository (`store.ts`) and record types with the repository layout
-  (`models.ts`).
+  repository (`store.ts`), record types with the repository layout
+  (`models.ts`) and the upgrades of that layout (`migrations.ts`: a
+  change of the layout raises SCHEMA_VERSION and adds a step).
 * `src/services/` - users and registration, repositories and content
   editing, access tokens and one-time passwords, invitations,
   pre-registrations, branding.

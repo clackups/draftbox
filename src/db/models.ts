@@ -17,9 +17,10 @@
 //   index/repo/<ownerId>/<repoName>      repoId
 //   index/invite/<sha256(code)>          inviteId
 //   index/otp/<hmac(password)>           tokenId
+//   index/user-tokens/<userId>/<tokenId> tokenId
 //   index/email-verify/<sha256(code)>    userId (pending contact email)
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export type Language = string;
 export type Theme = 'auto' | 'light' | 'dark';
