@@ -22,6 +22,8 @@ Features
   size and orientation, base font size, a header with the document
   title and a footer with the file name, the date of the last change
   and page numbers. The user's choices are kept as their defaults.
+  Hebrew is set right to left (with DejaVu Sans, loaded only when a
+  document contains Hebrew).
 * Git smart HTTP (protocol v0 and v2) with access tokens: global or
   per-repository, read-write or read-only, permanent or valid for
   1/3/6/12 months. A token can have a one-time 8-digit password that is

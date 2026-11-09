@@ -26,9 +26,14 @@ const STATIC_FILES: Record<string, { type: string; file: string }> = {
   'DejaVuSansMono-Bold.ttf': { type: TTF, file: DEJAVU + 'DejaVuSansMono-Bold.ttf' },
   'DejaVuSansMono-Oblique.ttf': { type: TTF, file: DEJAVU + 'DejaVuSansMono-Oblique.ttf' },
   'DejaVuSansMono-BoldOblique.ttf': { type: TTF, file: DEJAVU + 'DejaVuSansMono-BoldOblique.ttf' },
+  'DejaVuSans.ttf': { type: TTF, file: DEJAVU + 'DejaVuSans.ttf' },
+  'DejaVuSans-Bold.ttf': { type: TTF, file: DEJAVU + 'DejaVuSans-Bold.ttf' },
+  'DejaVuSans-Oblique.ttf': { type: TTF, file: DEJAVU + 'DejaVuSans-Oblique.ttf' },
+  'DejaVuSans-BoldOblique.ttf': { type: TTF, file: DEJAVU + 'DejaVuSans-BoldOblique.ttf' },
 };
 
-// Scripts and fonts that app.js loads when the user creates a PDF.
+// Scripts and fonts that app.js loads when the user creates a PDF. The
+// Hebrew family (DejaVu Sans) is loaded only for documents with Hebrew.
 export function pdfAssets(): { scripts: string[]; fonts: Record<string, Record<string, string>> } {
   return {
     scripts: ['pdfmake.min.js', 'html-to-pdfmake.js', 'pdf.js'].map(staticUrl),
@@ -40,6 +45,10 @@ export function pdfAssets(): { scripts: string[]; fonts: Record<string, Record<s
       Mono: {
         normal: staticUrl('DejaVuSansMono.ttf'), bold: staticUrl('DejaVuSansMono-Bold.ttf'),
         italics: staticUrl('DejaVuSansMono-Oblique.ttf'), bolditalics: staticUrl('DejaVuSansMono-BoldOblique.ttf'),
+      },
+      Hebrew: {
+        normal: staticUrl('DejaVuSans.ttf'), bold: staticUrl('DejaVuSans-Bold.ttf'),
+        italics: staticUrl('DejaVuSans-Oblique.ttf'), bolditalics: staticUrl('DejaVuSans-BoldOblique.ttf'),
       },
     },
   };

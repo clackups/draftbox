@@ -137,6 +137,8 @@
     var statusEl = pdfDialog.querySelector('[data-pdf-status]');
     var assets = JSON.parse(pdfDialog.getAttribute('data-pdf-assets'));
     var libs = null;
+    var fontUrls = {};
+    var measurer = null;
 
     var loadScript = function (src) {
       return new Promise(function (resolve, reject) {
@@ -153,19 +155,39 @@
         libs = assets.scripts.reduce(function (p, src) {
           return p.then(function () { return loadScript(src); });
         }, Promise.resolve()).then(function () {
-          var abs = function (u) { return location.origin + u; };
-          var fonts = {};
           Object.keys(assets.fonts).forEach(function (family) {
-            fonts[family] = {};
-            Object.keys(assets.fonts[family]).forEach(function (style) { fonts[family][style] = abs(assets.fonts[family][style]); });
+            fontUrls[family] = {};
+            Object.keys(assets.fonts[family]).forEach(function (style) { fontUrls[family][style] = location.origin + assets.fonts[family][style]; });
           });
-          window.pdfMake.setFonts(fonts);
           // Fonts come from this site only.
           window.pdfMake.setUrlAccessPolicy(function (url) { return url.indexOf(location.origin + '/') === 0; });
         });
         libs.catch(function () { libs = null; });
       }
       return libs;
+    };
+    // Width of a text in points, for laying out right-to-left lines: the
+    // PDF fonts are loaded into the page and measured on a canvas.
+    var loadMeasure = function () {
+      if (!measurer) {
+        var faces = [];
+        Object.keys(fontUrls).forEach(function (family) {
+          [['normal', 'normal', 'normal'], ['bold', 'bold', 'normal'], ['italics', 'normal', 'italic'], ['bolditalics', 'bold', 'italic']].forEach(function (v) {
+            var face = new FontFace('DraftboxPdf-' + family, 'url(' + fontUrls[family][v[0]] + ')', { weight: v[1], style: v[2] });
+            document.fonts.add(face);
+            faces.push(face.load());
+          });
+        });
+        measurer = Promise.all(faces).then(function () {
+          var ctx = document.createElement('canvas').getContext('2d');
+          return function (text, family, bold, italics, size) {
+            ctx.font = (italics ? 'italic ' : '') + (bold ? 'bold ' : '') + size + 'px "DraftboxPdf-' + family + '"';
+            return ctx.measureText(text).width;
+          };
+        });
+        measurer.catch(function () { measurer = null; });
+      }
+      return measurer;
     };
     var source = function () {
       var mode = pdfDialog.getAttribute('data-mode');
@@ -207,8 +229,17 @@
       setBusy(true, pdfDialog.getAttribute('data-creating'));
       var filename = pdfDialog.getAttribute('data-filename');
       var date = new Date(pdfDialog.getAttribute('data-date') || '');
+      var src;
       Promise.all([loadLibs(), source()]).then(function (res) {
-        var src = res[1];
+        src = res[1];
+        var pdf = window.DraftboxPdf;
+        var hebrew = pdf.hasHebrew(src.mode === 'text' ? src.text : src.element) || pdf.hasHebrew(field('headerText').value) || pdf.hasHebrew(filename);
+        // The Hebrew font is fetched only when it is needed.
+        var fonts = {};
+        Object.keys(fontUrls).forEach(function (f) { if (f !== 'Hebrew' || hebrew) fonts[f] = fontUrls[f]; });
+        window.pdfMake.setFonts(fonts);
+        return hebrew ? loadMeasure() : null;
+      }).then(function (measure) {
         var doc = window.DraftboxPdf.build({
           mode: src.mode,
           element: src.element,
@@ -226,6 +257,7 @@
           footerPageNumbers: field('footerPageNumbers').checked,
           pageOf: pdfDialog.getAttribute('data-page-of'),
           locale: locale,
+          measure: measure || undefined,
         });
         return window.pdfMake.createPdf(doc).download((filename.replace(/\.[^.]*$/, '') || filename) + '.pdf');
       }).then(function () {

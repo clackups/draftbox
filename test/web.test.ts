@@ -948,7 +948,7 @@ test('save as PDF: dialog, last change and preferences', async () => {
   const assets = JSON.parse(/data-pdf-assets="([^"]+)"/.exec(page.text)![1].replace(/&quot;/g, '"').replace(/&amp;/g, '&')) as
     { scripts: string[]; fonts: Record<string, Record<string, string>> };
   assert.equal(assets.scripts.length, 3);
-  for (const url of [...assets.scripts, assets.fonts.Roboto.normal, assets.fonts.Mono.bolditalics]) {
+  for (const url of [...assets.scripts, assets.fonts.Roboto.normal, assets.fonts.Mono.bolditalics, assets.fonts.Hebrew.normal, assets.fonts.Hebrew.bold]) {
     const res = await env.app.request(url);
     assert.equal(res.status, 200, url);
     assert.match(res.headers.get('Content-Type') ?? '', url.includes('.ttf') ? /^font\/ttf/ : /^text\/javascript/);
