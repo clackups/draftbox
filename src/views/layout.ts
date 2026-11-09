@@ -85,9 +85,19 @@ const GITHUB_ICON = '<svg viewBox="0 0 16 16" width="20" height="20" aria-hidden
   + ' 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48'
   + ' 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>';
 
+// The footer text is sanitized when it is saved; it is sanitized again
+// for display in case the stored data was changed by other means, and
+// the result is kept, since the text rarely changes.
+let footerCache = { text: '', html: '' };
+
+function footerHtml(text: string): string {
+  if (footerCache.text !== text) footerCache = { text, html: sanitizeHtml(text) };
+  return footerCache.html;
+}
+
 function footer(page: Page): Html {
   return html`<footer class="footer">
-  <div class="footer-text">${raw(sanitizeHtml(page.branding.footerText))}</div>
+  <div class="footer-text">${raw(footerHtml(page.branding.footerText))}</div>
   <div class="footer-end">
     <a href="/privacy">${page.t('footer.privacy')}</a>
     <div class="langs">${LANGUAGES.map((l) => l === page.lang
