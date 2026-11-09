@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { rm } from 'node:fs/promises';
+import { readdir, rm, stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import { processOutput } from '../util/process.ts';
 import type { Context } from './context.ts';
 import { ServiceError } from './context.ts';
@@ -149,14 +150,24 @@ export class RepoService {
     return this.ctx.git.open(this.ctx.repoPath(repo.id));
   }
 
-  // Time of the newest commit on any branch, or the creation time of
-  // an empty repository, in milliseconds since the epoch.
+  // When a branch of the repository last changed (or when it was
+  // created), in milliseconds since the epoch. Every commit or push
+  // rewrites a branch ref file or packed-refs, so their modification
+  // times tell without opening the repository.
   async lastUpdated(repo: Repo): Promise<number> {
     let latest = Date.parse(repo.createdAt);
-    const git = await this.open(repo);
-    for (const ref of await git.listRefs('refs/heads/')) {
-      const commit = ref.commitOid ? await git.getCommit(ref.commitOid) : null;
-      if (commit) latest = Math.max(latest, commit.committer.time * 1000);
+    const dir = this.ctx.repoPath(repo.id);
+    const files = [join(dir, 'packed-refs')];
+    try {
+      for (const f of await readdir(join(dir, 'refs', 'heads'), { recursive: true, withFileTypes: true })) {
+        if (f.isFile()) files.push(join(f.parentPath, f.name));
+      }
+    } catch {
+      // No branches yet.
+    }
+    for (const f of files) {
+      const st = await stat(f).catch(() => null);
+      if (st) latest = Math.max(latest, st.mtimeMs);
     }
     return latest;
   }
