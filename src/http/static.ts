@@ -8,6 +8,7 @@ const JS = 'text/javascript; charset=utf-8';
 const TTF = 'font/ttf';
 const PDFMAKE = 'node_modules/pdfmake/build/';
 const DEJAVU = 'node_modules/dejavu-fonts-ttf/ttf/';
+const GOOGLE = 'node_modules/@expo-google-fonts/';
 
 // Files served under /static/, relative to the project root. The PDF
 // libraries and fonts come straight from their npm packages.
@@ -30,10 +31,24 @@ const STATIC_FILES: Record<string, { type: string; file: string }> = {
   'DejaVuSans-Bold.ttf': { type: TTF, file: DEJAVU + 'DejaVuSans-Bold.ttf' },
   'DejaVuSans-Oblique.ttf': { type: TTF, file: DEJAVU + 'DejaVuSans-Oblique.ttf' },
   'DejaVuSans-BoldOblique.ttf': { type: TTF, file: DEJAVU + 'DejaVuSans-BoldOblique.ttf' },
+  'NotoSansDevanagari-Regular.ttf': { type: TTF, file: GOOGLE + 'noto-sans-devanagari/400Regular/NotoSansDevanagari_400Regular.ttf' },
+  'NotoSansDevanagari-Bold.ttf': { type: TTF, file: GOOGLE + 'noto-sans-devanagari/700Bold/NotoSansDevanagari_700Bold.ttf' },
+  'HindSiliguri-Regular.ttf': { type: TTF, file: GOOGLE + 'hind-siliguri/400Regular/HindSiliguri_400Regular.ttf' },
+  'HindSiliguri-Bold.ttf': { type: TTF, file: GOOGLE + 'hind-siliguri/700Bold/HindSiliguri_700Bold.ttf' },
+  'NotoSansTamil-Regular.ttf': { type: TTF, file: GOOGLE + 'noto-sans-tamil/400Regular/NotoSansTamil_400Regular.ttf' },
+  'NotoSansTamil-Bold.ttf': { type: TTF, file: GOOGLE + 'noto-sans-tamil/700Bold/NotoSansTamil_700Bold.ttf' },
 };
 
+// A family for a script that has no italics: italics use the upright faces.
+function upright(regular: string, bold: string): Record<string, string> {
+  return { normal: staticUrl(regular), bold: staticUrl(bold), italics: staticUrl(regular), bolditalics: staticUrl(bold) };
+}
+
 // Scripts and fonts that app.js loads when the user creates a PDF. The
-// Hebrew family (DejaVu Sans) is loaded only for documents with Hebrew.
+// families named after a script (static/pdf.js, SCRIPT_FONTS) are loaded
+// only for documents that contain it. Bengali (and Assamese) is set in
+// Hind Siliguri: fontkit (pdfmake's shaper) positions the marks of Noto
+// Sans Bengali differently from HarfBuzz.
 export function pdfAssets(): { scripts: string[]; fonts: Record<string, Record<string, string>> } {
   return {
     scripts: ['pdfmake.min.js', 'html-to-pdfmake.js', 'pdf.js'].map(staticUrl),
@@ -50,6 +65,9 @@ export function pdfAssets(): { scripts: string[]; fonts: Record<string, Record<s
         normal: staticUrl('DejaVuSans.ttf'), bold: staticUrl('DejaVuSans-Bold.ttf'),
         italics: staticUrl('DejaVuSans-Oblique.ttf'), bolditalics: staticUrl('DejaVuSans-BoldOblique.ttf'),
       },
+      Devanagari: upright('NotoSansDevanagari-Regular.ttf', 'NotoSansDevanagari-Bold.ttf'),
+      Bengali: upright('HindSiliguri-Regular.ttf', 'HindSiliguri-Bold.ttf'),
+      Tamil: upright('NotoSansTamil-Regular.ttf', 'NotoSansTamil-Bold.ttf'),
     },
   };
 }

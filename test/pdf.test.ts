@@ -6,7 +6,11 @@ import { runInNewContext } from 'node:vm';
 
 interface Piece { text: string; font?: string }
 interface Node { text?: Piece[] | string; stack?: Node[]; alignment?: string; margin?: number[] }
-interface Pdf { build(opts: Record<string, unknown>): { content: Node[] } }
+interface Pdf {
+  build(opts: Record<string, unknown>): { content: Node[]; header?: () => Node };
+  scriptsIn(source: string): string[];
+  isScriptFont(family: string): boolean;
+}
 
 const sandbox: { window: { DraftboxPdf?: Pdf } } = { window: {} };
 runInNewContext(readFileSync(new URL('../static/pdf.js', import.meta.url), 'utf8'), sandbox);
@@ -55,4 +59,44 @@ test('brackets around Hebrew are mirrored, and long lines wrap in order', () => 
 test('documents without Hebrew are left as they are', () => {
   const plain = 'Just text\n\tindented\n';
   assert.deepEqual(JSON.parse(JSON.stringify(build(plain))), JSON.parse(JSON.stringify(build(plain, { measure: undefined }))));
+});
+
+// Devanagari, Bengali and Tamil, written with escapes.
+const NAMASTE = '\u0928\u092e\u0938\u094d\u0924\u0947';
+const BANGLA = '\u09ac\u09be\u0982\u09b2\u09be';
+const TAMIL = '\u0ba4\u0bae\u0bbf\u0bb4\u0bcd';
+const DANDA = '\u0964';
+const ZWJ = '\u200d';
+const runs = (node: Node) => JSON.parse(JSON.stringify((node.text as (Piece | string)[]).map((p) => typeof p === 'string' ? [p, ''] : [p.text, p.font ?? ''])));
+
+test('runs of Indic letters get the font of their script', () => {
+  const node = build(`Hello ${NAMASTE}, ${BANGLA}${DANDA} ${TAMIL}.`, { measure: undefined });
+  assert.deepEqual(runs(node), [
+    ['Hello ', ''], [NAMASTE, 'Devanagari'], [', ', ''],
+    // The danda (a Devanagari character) stays with the Bengali it ends.
+    [BANGLA + DANDA, 'Bengali'], [' ', ''], [TAMIL, 'Tamil'], ['.', ''],
+  ]);
+  // A joiner stays in its run; the text node keeps its own properties.
+  const joined = build(`a\u0915\u094d${ZWJ}\u0937b`, { measure: undefined });
+  assert.deepEqual(runs(joined), [['a', ''], [`\u0915\u094d${ZWJ}\u0937`, 'Devanagari'], ['b', '']]);
+  assert.equal(joined.font, 'Mono');
+});
+
+test('the header gets script fonts too, and the fonts needed are named', () => {
+  const doc = pdf.build({ mode: 'text', text: 'x', paper: 'A4', fontSize: 10, header: true, headerText: NAMASTE, filename: 'x.txt' });
+  assert.deepEqual(runs(doc.header!()), [[NAMASTE, 'Devanagari']]);
+  assert.deepEqual([...pdf.scriptsIn(`${SHALOM} ${TAMIL} ${NAMASTE}`)], ['Hebrew', 'Devanagari', 'Tamil']);
+  assert.deepEqual([...pdf.scriptsIn('plain')], []);
+  assert.ok(pdf.isScriptFont('Bengali') && pdf.isScriptFont('Hebrew') && !pdf.isScriptFont('Roboto'));
+});
+
+test('Indic words in right-to-left lines are measured in their font', () => {
+  const families: string[] = [];
+  const spy = (text: string, f: string, b: boolean, i: boolean, size: number) => {
+    if (text.includes(NAMASTE)) families.push(f);
+    return measure(text, f, b, i, size);
+  };
+  const row = build(`${SHALOM} ${NAMASTE} ${OLAM}`, { measure: spy }).stack![0];
+  assert.deepEqual(families, ['Devanagari']);
+  assert.ok(JSON.stringify(row).includes(JSON.stringify({ text: NAMASTE, font: 'Devanagari' })));
 });

@@ -23,7 +23,9 @@ Features
   title and a footer with the file name, the date of the last change
   and page numbers. The user's choices are kept as their defaults.
   Hebrew is set right to left (with DejaVu Sans, loaded only when a
-  document contains Hebrew).
+  document contains Hebrew). Devanagari, Bengali (and Assamese) and
+  Tamil are set in Noto Sans Devanagari, Hind Siliguri and Noto Sans
+  Tamil, each loaded only when a document contains the script.
 * Git smart HTTP (protocol v0 and v2) with access tokens: global or
   per-repository, read-write or read-only, permanent or valid for
   1/3/6/12 months. A token can have a one-time 8-digit password that is

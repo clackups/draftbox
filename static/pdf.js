@@ -540,7 +540,7 @@
     // pass them from the stack that may replace the node to its lines.
     var lines = splitLines(flatten(node.text, copyProps(node, {}), []));
     var measureUnit = function (text, props, hebrewFont) {
-      var font = hebrewFont || HEBREW.test(text) ? 'Hebrew' : props.font || inh.font;
+      var font = hebrewFont || HEBREW.test(text) ? 'Hebrew' : firstScriptFont(text) || props.font || inh.font;
       var bold = props.bold !== undefined ? props.bold : inh.bold;
       var italics = props.italics !== undefined ? props.italics : inh.italics;
       return measure(text, font, !!bold, !!italics, props.fontSize || inh.fontSize);
@@ -602,6 +602,92 @@
     return result;
   }
 
+  // ---- Indic scripts --------------------------------------------------
+  // Roboto, DejaVu Sans Mono and DejaVu Sans have no Devanagari, Bengali
+  // or Tamil letters, and pdfmake has no fallback fonts: every run of
+  // these letters gets the font family of its script (fonts in
+  // src/http/static.ts). fontkit (inside pdfmake) shapes each run:
+  // conjuncts, reph, pre-base matras. Joiners and marks stay in the run
+  // they follow; dandas, shared by the scripts, too. Monospaced text (code,
+  // screenplays, text files) has no monospaced face for these scripts and
+  // sets them proportionally.
+
+  var SCRIPT_FONTS = [
+    { font: 'Devanagari', re: /[\u0900-\u097f\ua8e0-\ua8ff\u1cd0-\u1cff]/ },
+    { font: 'Bengali', re: /[\u0980-\u09ff]/ },
+    { font: 'Tamil', re: /[\u0b80-\u0bff]/ },
+  ];
+  var ANY_SCRIPT = /[\u0900-\u097f\ua8e0-\ua8ff\u1cd0-\u1cff\u0980-\u09ff\u0b80-\u0bff]/;
+  var IN_RUN = /[\u200c\u200d\u0964\u0965\p{M}]/u;
+
+  // The script font for a character, or null.
+  function scriptFont(ch) {
+    for (var i = 0; i < SCRIPT_FONTS.length; i++) if (SCRIPT_FONTS[i].re.test(ch)) return SCRIPT_FONTS[i].font;
+    return null;
+  }
+
+  // The font of the first letter of a script in `text`, or null.
+  function firstScriptFont(text) {
+    var m = ANY_SCRIPT.exec(text);
+    return m ? scriptFont(m[0]) : null;
+  }
+
+  // The font families named after a script that `source` (text or an
+  // element) needs: 'Hebrew', 'Devanagari', 'Bengali', 'Tamil'.
+  function scriptsIn(source) {
+    var text = typeof source === 'string' ? source : (source && source.textContent) || '';
+    var out = HEBREW.test(text) ? ['Hebrew'] : [];
+    SCRIPT_FONTS.forEach(function (s) { if (s.re.test(text)) out.push(s.font); });
+    return out;
+  }
+
+  function isScriptFont(family) {
+    return family === 'Hebrew' || SCRIPT_FONTS.some(function (s) { return s.font === family; });
+  }
+
+  // `text` as pdfmake inline text, its runs of a script in their font.
+  function scriptRuns(text) {
+    if (!ANY_SCRIPT.test(text)) return text;
+    var runs = [];
+    var cur = null;
+    for (var i = 0; i < text.length; i++) {
+      var ch = text.charAt(i);
+      var font = cur && cur.font && IN_RUN.test(ch) ? cur.font : scriptFont(ch);
+      if (!cur || cur.font !== font) runs.push(cur = { text: '', font: font });
+      cur.text += ch;
+    }
+    return runs.map(function (r) { return r.font ? { text: r.text, font: r.font } : r.text; });
+  }
+
+  function inlineScripts(text) {
+    if (typeof text === 'string') return scriptRuns(text);
+    if (Array.isArray(text)) {
+      return text.map(function (t) {
+        var r = inlineScripts(t);
+        return Array.isArray(r) && !Array.isArray(t) ? { text: r } : r;
+      });
+    }
+    if (text && typeof text === 'object') text.text = inlineScripts(text.text);
+    return text;
+  }
+
+  // Sets the runs of Indic letters in the content `node` in their fonts.
+  function setScripts(node) {
+    if (typeof node === 'string') {
+      var runs = scriptRuns(node);
+      return typeof runs === 'string' ? runs : { text: runs };
+    }
+    if (Array.isArray(node)) return node.map(setScripts);
+    if (!node || typeof node !== 'object') return node;
+    if (node.text !== undefined) {
+      node.text = inlineScripts(node.text);
+      return node;
+    }
+    ['stack', 'ul', 'ol', 'columns'].forEach(function (k) { if (node[k]) node[k] = setScripts(node[k]); });
+    if (node.table && node.table.body) node.table.body = node.table.body.map(function (row) { return row.map(setScripts); });
+    return node;
+  }
+
   // opts: mode ('markdown', 'fountain' or 'text'); element (rendered
   // content) or text; paper, landscape, fontSize, header, headerText,
   // filename, footerFilename, date (Date or null), footerDate,
@@ -635,7 +721,7 @@
     }
 
     var lay = function (node, width, inh) { return hebrew ? bidi(node, width, inh, opts.measure) : node; };
-    content = lay(content, cw, { font: font, fontSize: b, bold: false, italics: false, textFile: opts.mode === 'text' });
+    content = setScripts(lay(content, cw, { font: font, fontSize: b, bold: false, italics: false, textFile: opts.mode === 'text' }));
 
     var box = { fontSize: Math.max(7, b * 0.75), color: BOX_COLOR, font: 'Roboto' };
     var boxInh = { font: box.font, fontSize: box.fontSize, bold: false, italics: false, keepLayout: true };
@@ -650,11 +736,11 @@
       defaultStyle: { font: font, fontSize: b, lineHeight: font === 'Mono' ? 1.05 : 1.2 },
       content: content,
       header: opts.header ? function () {
-        return lay({ text: title, alignment: 'center', margin: [MARGIN_X, MARGIN_Y * 0.45, MARGIN_X, 0], fontSize: box.fontSize, color: box.color, font: box.font }, pageW, boxInh);
+        return setScripts(lay({ text: title, alignment: 'center', margin: [MARGIN_X, MARGIN_Y * 0.45, MARGIN_X, 0], fontSize: box.fontSize, color: box.color, font: box.font }, pageW, boxInh));
       } : undefined,
       footer: withFooter ? function (page, pages) {
         var pageText = opts.footerPageNumbers ? opts.pageOf.replace('{pages}', String(pages)).replace('{page}', String(page)) : '';
-        return lay({
+        return setScripts(lay({
           columns: [
             { text: opts.footerFilename ? opts.filename : '', alignment: 'left' },
             { text: dateText, alignment: 'center' },
@@ -662,10 +748,10 @@
           ],
           margin: [MARGIN_X, MARGIN_Y * 0.35, MARGIN_X, 0],
           fontSize: box.fontSize, color: box.color, font: box.font,
-        }, pageW, boxInh);
+        }, pageW, boxInh));
       } : undefined,
     };
   }
 
-  window.DraftboxPdf = { build: build, formatDate: formatDate, hasHebrew: hasHebrew };
+  window.DraftboxPdf = { build: build, formatDate: formatDate, hasHebrew: hasHebrew, scriptsIn: scriptsIn, isScriptFont: isScriptFont };
 })();
