@@ -72,12 +72,42 @@ export function pdfAssets(): { scripts: string[]; fonts: Record<string, Record<s
   };
 }
 
+// Fixes to fontkit (the shaper inside pdfmake.min.js), applied when the
+// bundle is served. Each one must match exactly once: a pdfmake upgrade
+// that changes the code fails here instead of shipping unfixed text.
+// - Chaining contextual rules list their backtrack glyphs from the
+//   nearest one outwards (OpenType spec); fontkit compared them in text
+//   order, so rules with two or more backtrack glyphs never applied.
+//   Bengali fonts use such rules for a reph over a pre-base matra
+//   (without the fix the reph is drawn twice).
+// - 'init' (the word-initial form of a pre-base matra) is applied only at
+//   the start of a word, not after a letter or a spacing mark.
+const PDFMAKE_FIXES: [string, string][] = [
+  ['this.sequenceMatches(-t.backtrack.length,t.backtrack)',
+    'this.sequenceMatches(-t.backtrack.length,Array.from(t.backtrack).reverse())'],
+  ['this.classSequenceMatches(-r.backtrack.length,r.backtrack,',
+    'this.classSequenceMatches(-r.backtrack.length,Array.from(r.backtrack).reverse(),'],
+  ['this.coverageSequenceMatches(-t.backtrackGlyphCount,t.backtrackCoverage)',
+    'this.coverageSequenceMatches(-t.backtrackGlyphCount,Array.from(t.backtrackCoverage).reverse())'],
+  ['/Cf|Mn/.test(', '/Cf|Mn|Mc|Lo/.test('],
+];
+
+export function patchPdfmake(code: string): string {
+  for (const [from, to] of PDFMAKE_FIXES) {
+    const parts = code.split(from);
+    if (parts.length !== 2) throw new Error(`pdfmake.min.js: expected one ${JSON.stringify(from)}, found ${parts.length - 1}`);
+    code = parts.join(to);
+  }
+  return code;
+}
+
 const cache = new Map<string, Uint8Array>();
 
 function staticFile(name: string): Uint8Array {
   let data = cache.get(name);
   if (!data) {
     data = readFileSync(new URL(`../../${STATIC_FILES[name].file}`, import.meta.url));
+    if (name === 'pdfmake.min.js') data = new TextEncoder().encode(patchPdfmake(new TextDecoder().decode(data)));
     cache.set(name, data);
   }
   return data;
